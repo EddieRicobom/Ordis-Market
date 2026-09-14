@@ -1,0 +1,15 @@
+{
+  "items": [
+    { "item_id": "mesa_prime_neuroptics", "quantity": 3 },
+    { "item_id": "mesa_prime_chassis", "quantity": 1 },
+    { "item_id": "mesa_prime_systems", "quantity": 2 },
+    { "item_id": "braton_prime_barrel", "quantity": 5 },
+    { "item_id": "braton_prime_receiver", "quantity": 1 },
+    { "item_id": "braton_prime_stock", "quantity": 1 },
+    { "item_id": "orokin_cell", "quantity": 40 },
+    { "item_id": "argon_crystal", "quantity": 12 },
+    { "item_id": "ash_prime_set", "quantity": 1 },
+    { "item_id": "fleeting_expertise", "quantity": 1 },
+    { "item_id": "some_unreleased_placeholder_item", "quantity": 1 }
+  ]
+}

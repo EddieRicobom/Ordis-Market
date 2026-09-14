@@ -1,0 +1,13 @@
+# Ordis Market -- dependencies
+# Ordis: "A short list. I promise. Mostly."
+
+PySide6>=6.7,<7.0
+requests>=2.31,<3.0
+openpyxl>=3.1,<4.0
+
+# -- build tooling (only needed to produce OrdisMarket.exe) --
+pyinstaller>=6.6,<7.0
+
+# -- development / tests --
+# The test suite (tests/) uses only Python's built-in `unittest` module
+# and mocks all network I/O, so no extra test dependencies are required.
