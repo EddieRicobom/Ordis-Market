@@ -621,13 +621,8 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(False)
         self.loading_indicator.stop()
         
-        # v2.0: Play completion sound
-        try:
-            from app.ui.ui_enhanced import SoundManager
-            sound_mgr = SoundManager()
-            sound_mgr.play_complete()
-        except (ImportError, Exception):
-            pass  # Sound not available, continue gracefully
+        # v2.0: Sound effects disabled for now (causes UI freeze)
+        # Will be re-enabled in v2.1 with proper threading
         
         self.lbl_tradable.setText(f"Tradable: {report.total_tradable_items}")
         self.lbl_value.setText(f"Estimated Value: {report.estimated_total_value:.0f}p")

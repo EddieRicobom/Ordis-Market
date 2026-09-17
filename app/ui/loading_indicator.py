@@ -32,7 +32,7 @@ from app.ui.theme import ACCENT_CYAN
 
 try:
     from app.ui.ui_enhanced import SoundManager
-    SOUND_AVAILABLE = True
+    SOUND_AVAILABLE = False  # Disabled for v2.0 - causes UI freeze. Will fix in v2.1
 except (ImportError, Exception):
     SOUND_AVAILABLE = False
 
@@ -121,9 +121,6 @@ class LoadingIndicator(QWidget):
         self._pool: List[str] = []
         self._message_timer = QTimer(self)
         self._message_timer.timeout.connect(self._cycle_message)
-        
-        # v2.0: Sound effects support
-        self._sound_manager = SoundManager() if SOUND_AVAILABLE else None
 
         self.hide()
 
@@ -132,11 +129,6 @@ class LoadingIndicator(QWidget):
         self._cycle_message()
         self._message_timer.start(interval_ms)
         self._spinner.start()
-        
-        # v2.0: Play activation sound
-        if self._sound_manager:
-            self._sound_manager.play_start()
-        
         self.show()
 
     def stop(self) -> None:
