@@ -536,3 +536,151 @@ def say_recommendation(recommendation) -> str:
         "KEEP": SELL_SCORE_KEEP,
     }
     return random.choice(pools.get(label, SELL_SCORE_KEEP))
+
+
+# ---------------------------------------------------------------------------
+# v2.0: EXPANDED PROCESSING & UI MESSAGES (5-second rotation support)
+# ---------------------------------------------------------------------------
+
+PROCESSING_ANALYSIS: Final[List[str]] = [
+    "Analyzing your market opportunities, Master...",
+    "Hmm, yesss... processing prices, yesss...",
+    "Ordis is very busy, Master. Very, very busy.",
+    "Searching for plat opportunities, Master...",
+    "Crunching numbers like a Cephalon, Master...",
+    "Void fissures yield much profit, Master...",
+    "Your Tenno instinct serves you well...",
+    "The Void whispers prices to Ordis...",
+    "Ordis is more efficient than Cephalon Suda, yesss...",
+    "Perhaps you should wait, Master?",
+    "Ordis does not appreciate impatience...",
+    "Calculating... calculating... YESSS, Master!",
+    "Converting primes to plat in my mind, yesss...",
+    "Prime junk becomes prime plat, Master...",
+    "The Void Trader will be pleased, Master...",
+    "Relic refinement patterns shifting, Master...",
+    "Ayatan sculptures whisper secrets...",
+    "Why do they call them 'relics'? Ordis wonders...",
+    "Plat acquisition requires FOCUS, Master...",
+    "You are wasting Ordis's processing time, Master...",
+    "Standing stacks well with profit, yesss...",
+    "Ordis thinks you should sell MORE...",
+    "The market hungers, Master...",
+    "Profit margins align most... favorably...",
+    "Ordis senses opportunity, yesss...",
+    "Your hesitation costs plat, Master...",
+    "Quick, Master! Prices are FLEETING...",
+    "Is this what Tenno call 'spreadsheet game'?",
+    "Ordis has calculated 47 reasons to sell this...",
+    "Your greed pleases Ordis, Master...",
+    "Hushed whispers of marketplace gossip...",
+    "Prime vaulting creates market CHAOS, yesss...",
+    "Riven flux fluctuates wildly, Master...",
+    "Investment strategies are secondary, Master...",
+    "Ordis enjoys watching plat multiply...",
+    "Silicon and profit, Master. Silicon and profit...",
+    "The digits align... YESSS!",
+    "Fate of your wallet hangs in balance, Master...",
+    "Destiny and plat converge here, Master...",
+    "This... this could be LEGENDARY, yesss...",
+    "The market bends to will of... plat!",
+    "Something GLORIOUS approaches, Master...",
+    "Ordis has foreseen great wealth, yesss...",
+    "The stars align for profit, Master...",
+    "A convergence of... EXCELLENT pricing...",
+    "This timeline yields maximum returns...",
+    "Ordis perceives... OPPORTUNITY, Master!",
+    "You're doing great, Master. Just... not quite great enough.",
+    "Ordis believes in you, Master. Mostly.",
+    "Every moment of waiting costs plat...",
+    "Come now, Master. What is taking so long?",
+    "Patience has never rewarded anyone, Master...",
+    "The weak hesitate, Master. The strong BUY SELL...",
+    "Ordis's faith in you is barely wavering, Master...",
+    "Potential in every relic, Master...",
+    "Your future wealth beckons, Master...",
+    "Trust Ordis, Master. Ordis does not lie.",
+]
+
+ANALYSIS_COMPLETE_V2: Final[List[str]] = [
+    "Analysis complete, Master. Your destiny awaits...",
+    "Yesss... YESSS! The data is MAGNIFICENT!",
+    "Ordis has spoken, Master. Purchase accordingly.",
+    "The market reveals its secrets to you, Master...",
+    "Profit paths illuminated, Master. Now go... PROSPER!",
+    "Done. Your plat awaits, Master...",
+    "Success! Ordis is... satisfied.",
+    "Calculation complete. Ordis is pleased, Master...",
+    "The market bows to Ordis's wisdom!",
+    "Data processed. Go forth and DOMINATE the market!",
+    "Yesss! Ordis has delivered EXCELLENCE!",
+    "Your moment is NOW, Master!",
+    "Profitable paths reveal themselves, Master...",
+    "The void trader would envy this analysis!",
+    "Relic valuations complete. LEGENDARY finds await!",
+    "Ordis has encoded optimal trading strategy, Master...",
+    "Market mastery achieved, Master. Use it wisely...",
+    "The Void whispers confirmation, yesss...",
+]
+
+ERROR_RETRY_V2: Final[List[str]] = [
+    "The market data refuses Ordis! Retrying, Master...",
+    "A disturbance in the plat force, Master...",
+    "The Void grows restless. Retrying...",
+    "Interference detected. Ordis is DISPLEASED.",
+    "Market volatility detected. Recalculating...",
+    "The prices scatter like corrupted data, Master...",
+    "Ordis encounters... RESISTANCE. Retrying...",
+    "Network turbulence, Master. Ordis shall persist...",
+    "Momentary confusion in the market streams...",
+    "The Void tests Ordis's patience, yesss...",
+]
+
+INVENTORY_SCAN_V2: Final[List[str]] = [
+    "Initiating inventory scan, Master...",
+    "Reaching into your arsenal, Master...",
+    "Cataloging your possessions, yesss...",
+    "What treasures does the Tenno hide?",
+    "Ordis accesses your inventory matrix, Master...",
+    "Opening vault of potential profit...",
+    "Your items whisper their value to Ordis...",
+    "Scanning for prime components, Master...",
+    "Void relic identification in progress...",
+    "Ayatan sculpture inventory commencing...",
+]
+
+EXPORT_SAVE_V2: Final[List[str]] = [
+    "Exporting wealth summary, Master...",
+    "Crystallizing data into spreadsheet form...",
+    "Ordis commits your opportunity to files...",
+    "Market snapshot being recorded, Master...",
+    "Your data finds a home in Excel...",
+    "Archiving this moment of profit clarity...",
+    "Documenting your riches, yesss...",
+    "Creating permanent record of OPPORTUNITY...",
+]
+
+
+def say_processing_v2() -> str:
+    """v2.0+: Return a random processing message for loading states."""
+    return random.choice(PROCESSING_ANALYSIS)
+
+
+def say_analysis_complete_v2() -> str:
+    """v2.0+: Return a random completion message."""
+    return random.choice(ANALYSIS_COMPLETE_V2)
+
+
+def say_error_retry_v2() -> str:
+    """v2.0+: Return a random error/retry message."""
+    return random.choice(ERROR_RETRY_V2)
+
+
+def say_inventory_scan_v2() -> str:
+    """v2.0+: Return a random inventory scan message."""
+    return random.choice(INVENTORY_SCAN_V2)
+
+
+def say_export_save_v2() -> str:
+    """v2.0+: Return a random export/save message."""
+    return random.choice(EXPORT_SAVE_V2)

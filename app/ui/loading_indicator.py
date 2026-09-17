@@ -30,6 +30,12 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from app.ui.theme import ACCENT_CYAN
 
+try:
+    from app.ui.ui_enhanced import SoundManager
+    SOUND_AVAILABLE = True
+except (ImportError, Exception):
+    SOUND_AVAILABLE = False
+
 
 class OrokinSpinner(QWidget):
     """A rotating ring of fading tick marks. Pure QPainter, no assets."""
@@ -87,6 +93,8 @@ class OrokinSpinner(QWidget):
 
 class LoadingIndicator(QWidget):
     """Spinner + a status label that cycles through a message pool.
+    
+    Now with sound effects support (v2.0+)!
 
     Usage::
 
@@ -95,7 +103,7 @@ class LoadingIndicator(QWidget):
         self.loading_indicator.stop()
     """
 
-    DEFAULT_INTERVAL_MS = 3200
+    DEFAULT_INTERVAL_MS = 5000  # Updated to 5 seconds for v2.0
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -113,6 +121,9 @@ class LoadingIndicator(QWidget):
         self._pool: List[str] = []
         self._message_timer = QTimer(self)
         self._message_timer.timeout.connect(self._cycle_message)
+        
+        # v2.0: Sound effects support
+        self._sound_manager = SoundManager() if SOUND_AVAILABLE else None
 
         self.hide()
 
@@ -121,6 +132,11 @@ class LoadingIndicator(QWidget):
         self._cycle_message()
         self._message_timer.start(interval_ms)
         self._spinner.start()
+        
+        # v2.0: Play activation sound
+        if self._sound_manager:
+            self._sound_manager.play_start()
+        
         self.show()
 
     def stop(self) -> None:

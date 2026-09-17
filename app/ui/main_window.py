@@ -594,7 +594,13 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(ordis.say(ordis.ANALYSIS_START))
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
-        self.loading_indicator.start(ordis.ANALYSIS_START + ordis.PROCESSING_FLAVOR)
+        
+        # v2.0: Use expanded message pool with 5-second rotation
+        message_pool = (
+            ordis.ANALYSIS_START + ordis.PROCESSING_FLAVOR + ordis.PROCESSING_ANALYSIS
+        )
+        self.loading_indicator.start(message_pool, interval_ms=5000)  # 5-second intervals
+        
         self.btn_analyze.setEnabled(False)
 
         force_refresh = self._force_refresh_next_analysis
@@ -614,6 +620,15 @@ class MainWindow(QMainWindow):
         self._report = report
         self.progress_bar.setVisible(False)
         self.loading_indicator.stop()
+        
+        # v2.0: Play completion sound
+        try:
+            from app.ui.ui_enhanced import SoundManager
+            sound_mgr = SoundManager()
+            sound_mgr.play_complete()
+        except (ImportError, Exception):
+            pass  # Sound not available, continue gracefully
+        
         self.lbl_tradable.setText(f"Tradable: {report.total_tradable_items}")
         self.lbl_value.setText(f"Estimated Value: {report.estimated_total_value:.0f}p")
 
@@ -665,7 +680,11 @@ class MainWindow(QMainWindow):
             return
 
         self.statusBar().showMessage(ordis.say(ordis.CATALOG_UPDATE_START))
-        self.loading_indicator.start(ordis.CATALOG_UPDATE_START + ordis.PROCESSING_FLAVOR)
+        # v2.0: Use expanded message pool with 5-second rotation
+        message_pool = (
+            ordis.CATALOG_UPDATE_START + ordis.PROCESSING_FLAVOR + ordis.PROCESSING_ANALYSIS
+        )
+        self.loading_indicator.start(message_pool, interval_ms=5000)  # 5-second intervals
         self.btn_update_items.setEnabled(False)
 
         self._catalog_worker = _CatalogUpdateWorker(
