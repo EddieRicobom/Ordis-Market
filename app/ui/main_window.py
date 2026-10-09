@@ -90,6 +90,10 @@ class _SortableTableWidgetItem(QTableWidgetItem):
         return super().__lt__(other)
 
 
+class _AnalysisCancelled(Exception):
+    """Raised from the progress callback to abandon an analysis (window closing)."""
+
+
 class _AnalysisWorker(QThread):
     """Runs PortfolioAnalyzer off the UI thread so the dashboard does not
     freeze while Ordis interrogates the merchants."""
@@ -104,14 +108,21 @@ class _AnalysisWorker(QThread):
         self._snapshot = snapshot
         self._force_refresh = force_refresh
 
+    def _report_progress(self, current: int, total: int) -> None:
+        if self.isInterruptionRequested():
+            raise _AnalysisCancelled()
+        self.progress.emit(current, total)
+
     def run(self) -> None:
         try:
             report = self._analyzer.analyze(
                 self._snapshot,
-                progress_callback=lambda i, n: self.progress.emit(i, n),
+                progress_callback=self._report_progress,
                 force_refresh=self._force_refresh,
             )
             self.finished_ok.emit(report)
+        except _AnalysisCancelled:
+            logger.info("Analysis cancelled")
         except Exception as exc:  # noqa: BLE001 - surface any failure to the UI
             logger.exception("Analysis failed")
             self.failed.emit(str(exc))
@@ -209,6 +220,12 @@ class MainWindow(QMainWindow):
         self._worker: Optional[_AnalysisWorker] = None
         self._catalog_worker: Optional[_CatalogUpdateWorker] = None
         self._wiki_worker: Optional[_WikiUpdateWorker] = None
+        # Every started worker stays referenced here until its thread has really
+        # stopped. Dropping the last Python reference to a QThread that is still
+        # running aborts the whole process ("QThread: Destroyed while thread is
+        # still running"), which is what re-clicking ANALYZE right as a run
+        # finished, or closing the window mid-run, used to do.
+        self._live_threads: set[QThread] = set()
         self._force_refresh_next_analysis = False
         self._watcher = InventoryFileWatcher()
         self._watch_timer = QTimer(self)
@@ -224,6 +241,42 @@ class MainWindow(QMainWindow):
         self._load_persisted_inventory()
         self._load_persisted_report()
         self._update_button_states()
+
+    # -- worker thread lifetime --------------------------------------------
+
+    def _start_worker(self, worker: QThread) -> None:
+        self._prune_threads()
+        self._live_threads.add(worker)
+        # Bound method of a QObject -> the slot runs on the UI thread, never
+        # on the worker thread that emitted `finished`.
+        worker.finished.connect(self._prune_threads)
+        worker.start()
+
+    def _prune_threads(self) -> None:
+        self._live_threads = {t for t in self._live_threads if t.isRunning()}
+
+    def _shutdown_workers(self) -> None:
+        """Stops every background thread before the window goes away."""
+        for worker in list(self._live_threads):
+            for name in ("progress", "finished_ok", "failed"):
+                signal = getattr(worker, name, None)
+                if signal is not None:
+                    try:
+                        signal.disconnect()
+                    except (RuntimeError, TypeError):
+                        pass  # nothing was connected
+            worker.requestInterruption()
+        for worker in list(self._live_threads):
+            if not worker.wait(8000):
+                logger.warning("Worker thread did not stop in time; terminating it.")
+                worker.terminate()
+                worker.wait(2000)
+        self._live_threads.clear()
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - Qt override naming
+        self._watch_timer.stop()
+        self._shutdown_workers()
+        super().closeEvent(event)
 
     # -- UI construction -------------------------------------------------
 
@@ -591,6 +644,13 @@ class MainWindow(QMainWindow):
             self._show_error("Operator, please import an inventory first. I have nothing to analyze.")
             return
 
+        if self._worker is not None and self._worker.isRunning():
+            # ANALYZE is re-enabled from inside the "done" slot, while the old
+            # thread is still winding down -- don't start (or replace) a worker
+            # on top of it.
+            self.statusBar().showMessage("Operator, the previous analysis is still wrapping up.")
+            return
+
         self.statusBar().showMessage(ordis.say(ordis.ANALYSIS_START))
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
@@ -610,7 +670,7 @@ class MainWindow(QMainWindow):
         self._worker.progress.connect(self._on_progress)
         self._worker.finished_ok.connect(self._on_analysis_done)
         self._worker.failed.connect(self._on_analysis_failed)
-        self._worker.start()
+        self._start_worker(self._worker)
 
     def _on_progress(self, current: int, total: int) -> None:
         self.progress_bar.setMaximum(max(total, 1))
@@ -687,7 +747,7 @@ class MainWindow(QMainWindow):
         )
         self._catalog_worker.finished_ok.connect(self._on_update_items_done)
         self._catalog_worker.failed.connect(self._on_update_items_failed)
-        self._catalog_worker.start()
+        self._start_worker(self._catalog_worker)
 
     def _on_update_items_done(self, catalog_result, name_index_result) -> None:
         self.loading_indicator.stop()
@@ -764,7 +824,7 @@ class MainWindow(QMainWindow):
         self._wiki_worker.progress.connect(self._on_progress)
         self._wiki_worker.finished_ok.connect(self._on_update_wiki_done)
         self._wiki_worker.failed.connect(self._on_update_wiki_failed)
-        self._wiki_worker.start()
+        self._start_worker(self._wiki_worker)
 
     def _names_needing_wiki_lookup(self) -> list[str]:
         """Item names to resolve, sourced from the current analyzed report

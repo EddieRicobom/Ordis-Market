@@ -531,6 +531,42 @@ class TestPortfolioAnalyzer(unittest.TestCase):
         base_names = {a.base_name for a in report.analyses}
         self.assertEqual(base_names, {"Serration"})  # one shared name, not two different ones
 
+    def test_progress_callback_can_cancel_without_fetching_the_whole_queue(self):
+        """Raising from progress_callback (how the window cancels a run on
+        close) must propagate, and must not leave the executor draining every
+        queued slug first."""
+        slugs = [f"item_{i}" for i in range(40)]
+        for slug in slugs:
+            self.catalog._entries[slug] = CatalogEntry(
+                slug=slug, item_id=slug, name=slug, category="misc", tradable=True
+            )
+            self.catalog._name_index[slug] = slug
+
+        def slow_orders(slug, force_refresh=False):
+            time.sleep(0.05)
+            return OrdersResult(
+                item_orders=ItemOrders(slug=slug, sell_orders=(), buy_orders=(), fetched_at=time.time()),
+                from_cache=False,
+                stale=False,
+            )
+
+        self.repo.get_orders.side_effect = slow_orders
+        snapshot = InventorySnapshot(
+            items=tuple(InventoryItem(slug, 1, slug) for slug in slugs),
+            imported_at=datetime.now(timezone.utc),
+            source_path="test",
+        )
+
+        class Cancelled(Exception):
+            pass
+
+        def cancel(done, total):
+            raise Cancelled()
+
+        with self.assertRaises(Cancelled):
+            self.analyzer.analyze(snapshot, progress_callback=cancel)
+        self.assertLess(self.repo.get_orders.call_count, len(slugs))
+
 
 if __name__ == "__main__":
     unittest.main()

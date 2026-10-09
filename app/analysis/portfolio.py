@@ -204,12 +204,23 @@ class PortfolioAnalyzer:
             worker_count = min(self._max_workers, len(unique_slugs))
             with ThreadPoolExecutor(max_workers=worker_count) as executor:
                 futures = [executor.submit(_fetch, slug) for slug in unique_slugs]
-                for future in as_completed(futures):
-                    slug, result = future.result()
-                    orders_by_slug[slug] = result
-                    if result.item_orders is not None:
-                        liquidity_by_slug[slug] = self._liquidity_analyzer.analyze(result.item_orders)
-                    _tick(items_per_slug[slug])
+                try:
+                    for future in as_completed(futures):
+                        slug, result = future.result()
+                        orders_by_slug[slug] = result
+                        if result.item_orders is not None:
+                            liquidity_by_slug[slug] = self._liquidity_analyzer.analyze(
+                                result.item_orders
+                            )
+                        _tick(items_per_slug[slug])
+                except BaseException:
+                    # progress_callback may raise to cancel (e.g. the window is
+                    # closing). Drop every fetch that hasn't started yet, so
+                    # leaving this `with` block only waits for the few requests
+                    # already in flight instead of the entire queue.
+                    for pending_future in futures:
+                        pending_future.cancel()
+                    raise
 
         # Phase 3 (sequential, CPU-only, uses the already-fetched/deduped
         # slug data): assemble the final per-item result. Price still has
