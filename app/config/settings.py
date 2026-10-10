@@ -141,6 +141,10 @@ class AppSettings:
     name_index_ttl_seconds: int = 60 * 60 * 24  # 24 hours for the DE name-mapping data
     offline_mode: bool = False
     request_timeout_seconds: float = 10.0
+    auto_update_market_on_start: bool = True
+    """On launch, refresh market prices (like UPDATE MARKET) when an inventory is
+    loaded and the last analysis is older than auto_update_min_age_seconds."""
+    auto_update_min_age_seconds: int = 60 * 10
 
     def to_dict(self) -> dict:
         return {
@@ -152,6 +156,8 @@ class AppSettings:
             "name_index_ttl_seconds": self.name_index_ttl_seconds,
             "offline_mode": self.offline_mode,
             "request_timeout_seconds": self.request_timeout_seconds,
+            "auto_update_market_on_start": self.auto_update_market_on_start,
+            "auto_update_min_age_seconds": self.auto_update_min_age_seconds,
         }
 
     @classmethod
@@ -167,4 +173,6 @@ class AppSettings:
             name_index_ttl_seconds=int(data.get("name_index_ttl_seconds", 86400)),
             offline_mode=bool(data.get("offline_mode", False)),
             request_timeout_seconds=float(data.get("request_timeout_seconds", 10.0)),
+            auto_update_market_on_start=bool(data.get("auto_update_market_on_start", True)),
+            auto_update_min_age_seconds=int(data.get("auto_update_min_age_seconds", 600)),
         )

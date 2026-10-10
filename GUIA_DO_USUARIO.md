@@ -56,6 +56,42 @@ mostram o número da versão atual.
 
 ---
 
+## A aba HOME (a primeira tela)
+
+Ao abrir o programa você cai na **HOME**, um resumo de uma tela com o que o Ordis
+já sabe. Nada aqui é dado novo: é a sua última análise, o progresso dos seus sets
+Prime e dois calendários, organizados pra você ler em dez segundos.
+
+- **A frase do Ordis** no topo é escolhida de uma lista fixa conforme a sua
+  situação (Baro na cidade, sets prontos pra vender, muitos itens negociáveis...).
+  Sem IA, sem internet.
+- **Os seis cards**: valor estimado, tamanho do inventário, itens negociáveis,
+  sets Prime prontos pra montar, sets a uma peça de ficar prontos e os Ducats das
+  suas peças Prime. Os dois cards de sets precisam das tabelas de relíquias (aba
+  RELICS); até lá mostram "-".
+- **O que merece atenção** lista o que foi encontrado (itens com nota SELL, itens
+  que valem mais como Ducats, Prime Sets montados, muitos duplicados, preços
+  antigos...). Clique numa linha, ou em qualquer card, pra ir pra tela
+  correspondente na aba Market ou Relics.
+- **Baro Ki'Teer** e **Prime Resurgence** mostram contagem regressiva ao vivo, a
+  data no *seu* fuso e uma barra com o quanto do ciclo já passou.
+- **Coming up** são os próximos eventos, em ordem.
+
+**Sobre essas datas:** o Ordis Market não se conecta ao jogo pra isso. O Baro é
+calculado pelo ciclo fixo dele (a cada 14 dias, sexta 13:00 UTC, 48 horas) e o
+Prime Resurgence pela rotação de 28 dias (quinta 18:00 UTC; ela anda em relação
+ao mês do calendário, não vira todo dia 1). Batem com datas publicadas de 2023 a
+2026, mas um evento especial pode deslocar uma delas, então trate como estimativa.
+Quais Primes estão no cofre do Resurgence ele não tem como saber offline.
+
+**Atualização automática de preços:** ao abrir o programa com um inventário
+carregado, ele atualiza os preços do mercado sozinho, exatamente como apertar
+**UPDATE MARKET** (a menos que a última análise tenha menos de 10 minutos ou você
+esteja no modo offline). Pra desligar, coloque `"auto_update_market_on_start": false`
+em `data/settings.json` (e `"auto_update_min_age_seconds"` muda a janela de 10 min).
+
+---
+
 ## O fluxo completo, passo a passo
 
 ### 1. Não precisa fazer nada antes de importar

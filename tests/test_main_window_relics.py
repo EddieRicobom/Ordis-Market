@@ -37,7 +37,8 @@ _TABS = _SETUP + textwrap.dedent(
     plain = make(None)
     assert plain.relics_tab is None
     win = make(RelicDataStore(tmp / "relic_data.json"))
-    assert win.tabs.count() == 2 and win.tabs.tabText(1) == "RELICS"
+    assert [win.tabs.tabText(i) for i in range(win.tabs.count())] == ["HOME", "MARKET", "RELICS"]
+    assert win.tabs.currentIndex() == 0  # the Home is the landing page
     print("OK")
     """
 )
@@ -55,7 +56,7 @@ _SHUTDOWN = _SETUP + textwrap.dedent(
 
     win = make(Slow(tmp / "relic_data.json"))
     win.show()
-    win.tabs.setCurrentIndex(1)  # first visit starts the auto-download
+    win.tabs.setCurrentWidget(win.relics_tab)  # first visit starts the auto-download
     def close_mid_download():
         assert win.relics_tab._worker.isRunning(), "download finished too early for this test"
         win.close()

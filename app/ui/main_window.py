@@ -59,9 +59,12 @@ from app.inventory.parser import (
 )
 from app.inventory.repository import InventoryRepository
 from app.inventory.watcher import InventoryFileWatcher
+from app.home.targets import Target
 from app.market.ducats import DucatVerdict
 from app.ord_isms import messages as ordis
 from app.relics.store import RelicDataStore
+from app.relics.view import FilterMode
+from app.ui.home_tab import HomeTab
 from app.ui.loading_indicator import LoadingIndicator
 from app.ui.relics_tab import RelicsTab
 from app.ui.sound_manager import get_sound_manager
@@ -209,6 +212,8 @@ class MainWindow(QMainWindow):
         initial_name_index_count: int = 0,
         initial_wiki_count: int = 0,
         relic_store: Optional[RelicDataStore] = None,
+        auto_update_market: bool = False,
+        auto_update_min_age_seconds: int = 600,
     ) -> None:
         super().__init__()
         self._parser = inventory_parser
@@ -220,6 +225,11 @@ class MainWindow(QMainWindow):
         self._report_repo = report_repository
         self._relic_store = relic_store
         self.relics_tab: Optional[RelicsTab] = None
+        self.home_tab: Optional[HomeTab] = None
+        self._auto_update_market = auto_update_market
+        self._auto_update_min_age = auto_update_min_age_seconds
+        self._analyzed_at: Optional[datetime] = None
+        self._analysis_is_auto = False
         self._initial_catalog_count = initial_catalog_count
         self._initial_name_index_count = initial_name_index_count
         self._initial_wiki_count = initial_wiki_count
@@ -250,6 +260,8 @@ class MainWindow(QMainWindow):
         self._update_button_states()
         # Load the sound effects once the window is up, not on the first click.
         QTimer.singleShot(500, get_sound_manager().preload)
+        if self._auto_update_market:
+            QTimer.singleShot(1500, self._maybe_auto_update_market)
 
     # -- worker thread lifetime --------------------------------------------
 
@@ -494,12 +506,23 @@ class MainWindow(QMainWindow):
                 start_worker=self._start_worker,
                 show_message=lambda text: self.statusBar().showMessage(text),
             )
+            self.home_tab = HomeTab(
+                self._relic_store,
+                get_report=lambda: self._report,
+                get_items=self._current_inventory_items,
+                get_analyzed_text=lambda: self.lbl_last_analysis.text(),
+            )
+            self.home_tab.navigate.connect(self._on_home_navigate)
+            self.relics_tab.data_updated.connect(self._on_relic_data_updated)
+            self._market_page = central
             self.tabs = QTabWidget()
+            self.tabs.addTab(self.home_tab, "HOME")
             self.tabs.addTab(central, "MARKET")
             self.tabs.addTab(self.relics_tab, "RELICS")
-            self.tabs.setTabToolTip(0, "Inventory analysis against live warframe.market prices.")
+            self.tabs.setTabToolTip(0, "Overview: inventory summary, what needs attention, Baro Ki'Teer and Prime Resurgence.")
+            self.tabs.setTabToolTip(1, "Inventory analysis against live warframe.market prices.")
             self.tabs.setTabToolTip(
-                1, "Prime sets you hold parts of, and which of your relics could complete them."
+                2, "Prime sets you hold parts of, and which of your relics could complete them."
             )
             self.tabs.currentChanged.connect(self._on_tab_changed)
             self.setCentralWidget(self.tabs)
@@ -515,6 +538,78 @@ class MainWindow(QMainWindow):
     def _on_tab_changed(self, index: int) -> None:
         if self.relics_tab is not None and self.tabs.widget(index) is self.relics_tab:
             self.relics_tab.on_activated()
+
+    # -- home tab --------------------------------------------------------
+
+    def _refresh_home(self) -> None:
+        if self.home_tab is not None:
+            self.home_tab.refresh()
+
+    def _on_relic_data_updated(self) -> None:
+        if self.home_tab is not None:
+            self.home_tab.invalidate_relic_data()
+            self.home_tab.refresh()
+
+    def _reset_market_filters(self) -> None:
+        """Back to the neutral Market view (everything visible), re-rendered once."""
+        widgets = (self.txt_search, self.chk_tradable_only, self.spin_min_score, self.chk_hide_prime_sets)
+        for widget in widgets:
+            widget.blockSignals(True)
+        self.txt_search.clear()
+        self.chk_tradable_only.setCurrentIndex(0)
+        self.spin_min_score.setValue(0)
+        self.chk_hide_prime_sets.setChecked(False)
+        for widget in widgets:
+            widget.blockSignals(False)
+        self._refresh_table()
+
+    def _on_home_navigate(self, target) -> None:
+        """Opens the existing screen a Home card or attention row points at."""
+        if self.relics_tab is None:
+            return
+        relic_modes = {
+            Target.RELICS_READY: FilterMode.COMPLETE,
+            Target.RELICS_ONE_AWAY: FilterMode.OWNED,
+            Target.RELICS_COMPLETABLE: FilterMode.COMPLETABLE,
+        }
+        if target in relic_modes or target == Target.RELICS:
+            self.tabs.setCurrentWidget(self.relics_tab)  # also loads the tables (on_activated)
+            if target in relic_modes:
+                self.relics_tab.show_mode(relic_modes[target])
+            return
+
+        self._reset_market_filters()
+        if target == Target.MARKET_TRADABLE:
+            self.chk_tradable_only.setCurrentText("Tradable Only")
+        elif target == Target.MARKET_PRIME_SETS:
+            self.txt_search.setText("prime set")
+            self._search_debounce_timer.stop()
+            self._refresh_table()
+        else:
+            sort_columns = {
+                Target.MARKET_BY_SCORE: self._COL_SCORE,
+                Target.MARKET_BY_QTY: self._COL_QTY,
+                Target.MARKET_BY_DUCATS: self._COL_DUCATS,
+            }
+            column = sort_columns.get(target)
+            if column is not None:
+                self.table.sortItems(column, Qt.DescendingOrder)
+        self.tabs.setCurrentWidget(self._market_page)
+
+    def _maybe_auto_update_market(self) -> None:
+        """On launch, do what UPDATE MARKET does -- unless there is nothing to price,
+        an analysis is already running, or the last one is fresh enough."""
+        if self._inventory_repo.snapshot is None:
+            return
+        if self._worker is not None and self._worker.isRunning():
+            return
+        if self._analyzed_at is not None:
+            age = (datetime.now(timezone.utc) - self._analyzed_at).total_seconds()
+            if age < self._auto_update_min_age:
+                return
+        self._analysis_is_auto = True
+        self.statusBar().showMessage("Operator, I am refreshing the market prices while you get settled.")
+        self._on_update_market_clicked()
 
     # -- Steam launch --------------------------------------------------
 
@@ -611,12 +706,18 @@ class MainWindow(QMainWindow):
             return
         report, analyzed_at_iso = loaded
         self._report = report
+        try:
+            parsed = datetime.fromisoformat(analyzed_at_iso)
+            self._analyzed_at = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except (ValueError, TypeError):
+            self._analyzed_at = None
         self.lbl_tradable.setText(f"Tradable: {report.total_tradable_items}")
         self.lbl_value.setText(f"Estimated Value: {report.estimated_total_value:.0f}p")
         self.lbl_last_analysis.setText(
             f"Last Analysis: {self._format_iso_timestamp(analyzed_at_iso)} (restored)"
         )
         self._refresh_table()
+        self._refresh_home()
         self.statusBar().showMessage(
             "Operator, I have restored your last analysis. No need to click "
             "ANALYZE again unless your inventory changed."
@@ -659,6 +760,7 @@ class MainWindow(QMainWindow):
         # the old numbers on screen would be actively misleading rather
         # than just stale.
         self._report = None
+        self._analyzed_at = None
         if self._report_repo is not None:
             self._report_repo.clear()
         self.lbl_tradable.setText("Tradable: -")
@@ -668,6 +770,7 @@ class MainWindow(QMainWindow):
         self._update_button_states()
         if self.relics_tab is not None:
             self.relics_tab.reload()  # a different inventory: parts and relics changed
+        self._refresh_home()
 
         message = ordis.say(ordis.WATCH_AUTO_IMPORTED) if auto else ordis.say(ordis.IMPORT_SUCCESS)
         if snapshot.unresolved_count:
@@ -700,6 +803,8 @@ class MainWindow(QMainWindow):
         self.loading_indicator.start(message_pool, interval_ms=5000)  # 5-second intervals
         
         self.btn_analyze.setEnabled(False)
+        if self.home_tab is not None:
+            self.home_tab.set_busy(True)
 
         force_refresh = self._force_refresh_next_analysis
         self._force_refresh_next_analysis = False
@@ -725,6 +830,10 @@ class MainWindow(QMainWindow):
         self.lbl_value.setText(f"Estimated Value: {report.estimated_total_value:.0f}p")
 
         analyzed_at = datetime.now(timezone.utc)
+        self._analyzed_at = analyzed_at
+        self._analysis_is_auto = False
+        if self.home_tab is not None:
+            self.home_tab.set_busy(False)
         self.lbl_last_analysis.setText(f"Last Analysis: {analyzed_at.strftime('%Y-%m-%d %H:%M')}")
         if self._report_repo is not None:
             self._report_repo.save(report, analyzed_at.isoformat())
@@ -757,12 +866,22 @@ class MainWindow(QMainWindow):
 
         self.statusBar().showMessage(message)
         self._refresh_table()
+        self._refresh_home()
 
     def _on_analysis_failed(self, error: str) -> None:
         self.progress_bar.setVisible(False)
         self.loading_indicator.stop()
         get_sound_manager().play_error()
         self._update_button_states()
+        if self.home_tab is not None:
+            self.home_tab.set_busy(False)
+        if self._analysis_is_auto:
+            # Started by itself at launch: say so quietly instead of a modal box.
+            self._analysis_is_auto = False
+            self.statusBar().showMessage(
+                f"Operator, the automatic price refresh failed ({error}). Use UPDATE MARKET to retry."
+            )
+            return
         self._show_error(f"{ordis.market_is_being_difficult()}\n\n({error})")
 
     # -- catalog / market refresh -----------------------------------------
