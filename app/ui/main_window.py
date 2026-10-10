@@ -961,7 +961,26 @@ class MainWindow(QMainWindow):
         # Disable sorting while repopulating: with setSortingEnabled(True),
         # Qt would otherwise re-sort after every single setItem() call,
         # scrambling rows out from under this loop.
+        #
+        # Likewise, the ResizeToContents columns must NOT be live while the
+        # cells are being replaced: with a visible window Qt re-measures every
+        # row of the column on each setItem(), which is quadratic and froze
+        # the app for minutes right after UPDATE MARKET (the second fill of an
+        # already-populated table). Measure once, at the end.
+        header = self.table.horizontalHeader()
+        self.table.setUpdatesEnabled(False)
         self.table.setSortingEnabled(False)
+        for col in range(1, self.table.columnCount()):
+            header.setSectionResizeMode(col, QHeaderView.Fixed)
+        try:
+            self._fill_table(items)
+        finally:
+            self.table.setSortingEnabled(True)
+            for col in range(1, self.table.columnCount()):
+                header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
+            self.table.setUpdatesEnabled(True)
+
+    def _fill_table(self, items: list[ItemAnalysis]) -> None:
         self.table.setRowCount(len(items))
 
         for row, a in enumerate(items):
@@ -1018,8 +1037,6 @@ class MainWindow(QMainWindow):
 
             sell_url = f"https://warframe.market/items/{a.slug}" if a.slug else None
             self._set_link_cell(row, self._COL_SELL, sell_url, "Sell \u2197")
-
-        self.table.setSortingEnabled(True)
 
     def _make_ducats_cell(self, analysis: ItemAnalysis) -> QTableWidgetItem:
         """Ducats vs. Platinum comparison, when there's enough data for
