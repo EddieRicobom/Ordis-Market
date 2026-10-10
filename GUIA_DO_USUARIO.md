@@ -136,6 +136,34 @@ títulos das colunas da tabela se explicam se você deixar o mouse parado
 em cima por um instante — se tiver dúvida sobre o que algo faz, é só
 esperar um pouco com o mouse ali.
 
+### 7. A aba RELICS
+
+Ao lado de **MARKET** existe a aba **RELICS**. Ela responde: *"quais sets Prime
+eu consigo completar abrindo relíquias que eu já tenho?"*
+
+- Ela usa o mesmo inventário que você importou na aba Market (peças **e**
+  relíquias). Importe primeiro, depois abra a aba. Ela se atualiza sozinha
+  quando você importa outro inventário.
+- Na primeira vez que você abre, ela baixa uma vez as tabelas de drop das
+  relíquias (uns 10 MB, do dataset público *warframe-items* do WFCD) e guarda
+  no seu PC. Depois disso funciona offline. Clique em **UPDATE RELIC DATA**
+  quando sair Prime novo (a linha de status avisa quando os dados têm mais de
+  uma semana).
+- Cada linha é um set Prime: peças que você tem, status, o que falta e **quais
+  relíquias suas abrir** (as que cobrem mais primeiro, ex.: `Neo C9 ×11 → Blueprint`).
+  Peças de Warframe contam tanto se você tem o Blueprint (diagrama) quanto o
+  Component já construído.
+- **Status:** *Completable* = tudo que falta cai de alguma relíquia sua;
+  *Partial* = só parte cai; *Complete* = nada falta.
+- A lista suspensa alterna entre *dá pra completar*, *parcialmente coberto*,
+  *já completo*, *todo set que tenho uma peça* e *todos os sets Prime*; a caixa
+  de busca acha um set. Clique numa linha pra ver o detalhe embaixo: cada peça
+  que falta, quais relíquias dropam, a chance por abertura e a chance se você
+  abrir todas as cópias que tem.
+
+As chances são do refinamento que você tem (Intact é pior que Radiant).
+Relíquias que não estão nos dados (muito novas, ou Requiem) são ignoradas.
+
 ---
 
 ## Como saber o que já está carregado

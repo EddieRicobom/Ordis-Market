@@ -90,6 +90,36 @@ QPushButton:disabled {{
     background-color: {BG_BASE};
 }}
 
+QTabWidget::pane {{
+    border: 1px solid {BORDER};
+    background-color: {BG_BASE};
+}}
+
+QTabBar::tab {{
+    background-color: {BG_PANEL};
+    color: {TEXT_MUTED};
+    border: 1px solid {BORDER};
+    padding: 6px 18px;
+    margin-right: 2px;
+}}
+
+QTabBar::tab:selected {{
+    color: {ACCENT_GOLD};
+    border-bottom: 2px solid {ACCENT_GOLD};
+}}
+
+QTabBar::tab:hover {{
+    color: {TEXT_PRIMARY};
+}}
+
+QTextEdit {{
+    background-color: {BG_PANEL};
+    color: {TEXT_PRIMARY};
+    border: 1px solid {BORDER};
+    border-radius: 3px;
+    padding: 6px;
+}}
+
 QLineEdit, QComboBox, QSpinBox {{
     background-color: {BG_PANEL};
     color: {TEXT_PRIMARY};
