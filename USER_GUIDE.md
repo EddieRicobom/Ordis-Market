@@ -58,6 +58,46 @@ MARKET") — both show the current version number.
 
 ---
 
+## The HOME tab (the first screen)
+
+When you open the app you land on **HOME**, a one-screen summary of what Ordis
+already knows. Nothing here is new data: it's your last analysis, your Prime set
+progress and two calendars, laid out so you can read it in ten seconds.
+
+- **Ordis' line** at the top is picked from a fixed list of phrases depending on
+  your situation (Baro in town, sets ready to trade, lots of tradable items...).
+  No AI, no internet.
+- **The six cards**: estimated value, inventory size, tradable items, Prime sets
+  ready to build, sets one part away, and the Ducats in your Prime parts. The two
+  set cards need the relic tables (see the RELICS tab); until then they show "-".
+- **What needs attention** lists what was found (items rated SELL, items worth
+  more as Ducats, assembled Prime Sets, many duplicates, stale prices...). Click a
+  row, or any card, to jump to the matching screen on the Market or Relics tab.
+- **Baro Ki'Teer** and **Prime Resurgence** show a live countdown, the date in
+  *your* time zone, and a bar with how far along the cycle is.
+- **Coming up** is the next few events in order.
+
+**Holographic effects:** the emblem projects from a base and now and then flickers
+with a red/cyan glitch, the cards get faint scanlines and an occasional sweep of
+light, the numbers glow, and Ordis' line types itself out when it changes. They
+only run while the Home is on screen. To reduce motion, set
+`"home_animations": false` in `data/settings.json`.
+
+**About those dates:** Ordis Market has no connection to the game for this. Baro
+is calculated from his fixed cycle (every 14 days, Friday 13:00 UTC, 48 hours) and
+Prime Resurgence from its 28-day rotation (Thursday 18:00 UTC; it drifts against
+the calendar month, it does not flip on the 1st). They match published dates from
+2023 to 2026, but a special event can shift one, so treat them as estimates.
+Which Primes are in the Resurgence vault is not something it can know offline.
+
+**Automatic price refresh:** when you open the app with an inventory loaded, it
+refreshes the market prices by itself, exactly like pressing **UPDATE MARKET**
+(unless your last analysis is under 10 minutes old, or you are in offline mode).
+To turn it off, set `"auto_update_market_on_start": false` in `data/settings.json`
+(and `"auto_update_min_age_seconds"` changes the 10-minute window).
+
+---
+
 ## The full flow, step by step
 
 ### 1. You don't need to do anything before importing

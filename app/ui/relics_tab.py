@@ -94,6 +94,8 @@ class _RelicDataWorker(QThread):
 
 
 class RelicsTab(QWidget):
+    data_updated = Signal()  # the relic tables were re-downloaded
+
     _COLUMNS = ("Set", "Parts", "Status", "Missing", "Relics to open")
     _COLUMN_TIPS = (
         "The Prime set (warframe, weapon, archwing, companion...).",
@@ -241,6 +243,17 @@ class RelicsTab(QWidget):
             self._auto_download_tried = True
             self.start_update()
 
+    def show_mode(self, mode: FilterMode) -> None:
+        """Switches the list filter (used by Home shortcuts) and clears the search."""
+        self.txt_search.blockSignals(True)
+        self.txt_search.clear()
+        self.txt_search.blockSignals(False)
+        index = self._modes.index(mode)
+        if self.cmb_mode.currentIndex() == index:
+            self._render()
+        else:
+            self.cmb_mode.setCurrentIndex(index)  # re-renders through its signal
+
     def reload(self) -> None:
         """Recomputes from the current inventory (call after an import)."""
         if not self._cache_loaded:
@@ -265,6 +278,7 @@ class RelicsTab(QWidget):
         self._data = data
         self._last_error = None
         self._cache_loaded = True
+        self.data_updated.emit()
         self.progress.setVisible(False)
         self.btn_update.setEnabled(True)
         get_sound_manager().play_notification()

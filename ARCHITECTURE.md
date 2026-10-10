@@ -82,6 +82,10 @@ The only external I/O this application performs is:
 | `relics.store` | Disk cache of the derived relic data (`data/relic_data.json`) | No |
 | `relics.analyzer` | Inventory x drop tables -> per-set status and which owned relics to open | No |
 | `relics.view` | Filters, sort order and cell text for the Relics tab (no Qt) | No |
+| `home.schedule` | Baro Ki'Teer / Prime Resurgence / weekly reset times from fixed cycles (no network) | No |
+| `home.summary` | Counts and "needs attention" items over the last report and the Relics analysis | No |
+| `home.headline` | Condition-based fixed Ordis lines for the Home (no generation) | No |
+| `home.targets` | Navigation targets a Home click can request | No |
 | `integrations.launcher` | Opens `steam://run/230410` via the OS | No (delegates to OS/Steam) |
 | `integrations.inventory_helper` | Starts an Operator-selected external `.exe` as its own process | No (delegates to OS; the external program may do its own I/O) |
 | `inventory.watcher` | Polls a chosen folder for a new/updated import file | No |

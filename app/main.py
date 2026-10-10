@@ -154,6 +154,9 @@ def main() -> int:
         initial_name_index_count=name_index_result.entry_count,
         initial_wiki_count=len(wiki_index),
         relic_store=relic_store,
+        auto_update_market=settings.auto_update_market_on_start and not settings.offline_mode,
+        auto_update_min_age_seconds=settings.auto_update_min_age_seconds,
+        home_animations=settings.home_animations,
     )
     window.show()
     return app.exec()
