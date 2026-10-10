@@ -16,12 +16,26 @@ Ordis: "I have been given a face made of light and arithmetic. I find it
 from __future__ import annotations
 
 import math
+import random
 from datetime import datetime
 from typing import Callable, Optional
 
 from PySide6.QtCore import QPointF, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QCursor, QFont, QPainter, QPainterPath, QPen, QRadialGradient
-from PySide6.QtWidgets import QFrame, QLabel, QVBoxLayout, QWidget
+from PySide6.QtGui import (
+    QBrush,
+    QColor,
+    QCursor,
+    QFont,
+    QImage,
+    QLinearGradient,
+    QPainter,
+    QPainterPath,
+    QPen,
+    QPixmap,
+    QPolygonF,
+    QRadialGradient,
+)
+from PySide6.QtWidgets import QFrame, QGraphicsDropShadowEffect, QLabel, QVBoxLayout, QWidget
 
 from app.home.schedule import EventKind, TimelineEvent, format_countdown
 from app.ui.theme import (
@@ -67,38 +81,130 @@ def _color(hex_code: str, alpha: int = 255) -> QColor:
     return colour
 
 
+def add_glow(widget: QWidget, hex_code: str, radius: int = 18, alpha: int = 150) -> None:
+    """Soft bloom around a label, like light bleeding off a projection."""
+    effect = QGraphicsDropShadowEffect(widget)
+    effect.setBlurRadius(radius)
+    effect.setOffset(0, 0)
+    effect.setColor(_color(hex_code, alpha))
+    widget.setGraphicsEffect(effect)
+
+
 class HologramCore(QWidget):
-    """Slowly animated emblem: rotating arcs, a tick ring, a breathing core and
-    a drifting aperture. Animates only while visible."""
+    """Holographic emblem: a projection base with a light beam, rotating arcs, a
+    tick ring, a breathing core and a drifting aperture. Now and then it
+    flickers and splits into red/cyan fringes for a split second, like an
+    unstable projection. Animates only while visible, and not at all when
+    animations are off."""
 
     FRAME_MS = 33
+    BASE_H = 16  # room under the emblem for the projector
 
-    def __init__(self, size: int = 138, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, size: int = 138, animated: bool = True, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self.setFixedSize(size, size)
         self._t = 0.0
+        self._animated = animated
+        self._rng = random.Random(7)
+        self._next_glitch = 3.0
+        self._glitch_until = 0.0
         self._timer = QTimer(self)
         self._timer.setInterval(self.FRAME_MS)
         self._timer.timeout.connect(self._advance)
 
-    def _advance(self) -> None:
-        self._t += self.FRAME_MS / 1000.0
+    def set_animated(self, animated: bool) -> None:
+        self._animated = animated
+        if animated and self.isVisible():
+            self._timer.start()
+        else:
+            self._timer.stop()
+            self._glitch_until = 0.0
         self.update()
 
+    def _advance(self) -> None:
+        self._t += self.FRAME_MS / 1000.0
+        if self._t >= self._next_glitch:
+            self._glitch_until = self._t + 0.16
+            self._next_glitch = self._t + self._rng.uniform(4.0, 9.0)
+        self.update()
+
+    def glitching(self) -> bool:
+        return self._animated and self._t < self._glitch_until
+
     def showEvent(self, event) -> None:  # noqa: N802
-        self._timer.start()
+        if self._animated:
+            self._timer.start()
         super().showEvent(event)
 
     def hideEvent(self, event) -> None:  # noqa: N802
         self._timer.stop()
         super().hideEvent(event)
 
+    def _geometry(self) -> tuple[QPointF, float]:
+        area_h = self.height() - self.BASE_H
+        return QPointF(self.width() / 2, area_h / 2 + 2), min(self.width(), area_h) / 2 - 4
+
     def paintEvent(self, event) -> None:  # noqa: N802
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
-        c = QPointF(self.width() / 2, self.height() / 2)
-        radius = min(self.width(), self.height()) / 2 - 4
+        c, radius = self._geometry()
+        self._paint_projector(painter, c, radius)
+        if not self.glitching():
+            self._paint_emblem(painter, c, radius)
+            return
+
+        # Unstable frame: draw the emblem to an image, then composite it with
+        # red / cyan fringes and a few sliced, shifted strips.
+        image = QImage(self.size(), QImage.Format_ARGB32_Premultiplied)
+        image.fill(Qt.transparent)
+        inner = QPainter(image)
+        inner.setRenderHint(QPainter.Antialiasing, True)
+        self._paint_emblem(inner, c, radius)
+        inner.end()
+
+        def tinted(colour: QColor) -> QImage:
+            copy = QImage(image)
+            tint = QPainter(copy)
+            tint.setCompositionMode(QPainter.CompositionMode_SourceIn)
+            tint.fillRect(copy.rect(), colour)
+            tint.end()
+            return copy
+
+        painter.setOpacity(0.55)
+        painter.drawImage(QPointF(-2.5, 0), tinted(QColor(255, 70, 110)))
+        painter.drawImage(QPointF(2.5, 0), tinted(QColor(60, 230, 255)))
+        painter.setOpacity(0.85)
+        strip = self._rng.randint(8, 18)
+        y = 0
+        while y < image.height():
+            shift = self._rng.choice((-3, 0, 0, 3)) if self._rng.random() < 0.35 else 0
+            painter.drawImage(QPointF(shift, y), image, QRectF(0, y, image.width(), strip))
+            y += strip
+
+    def _paint_projector(self, painter: QPainter, c: QPointF, radius: float) -> None:
+        """Emitter disc under the emblem and the faint cone of light above it."""
+        base_y = self.height() - self.BASE_H / 2 - 1
+        base_w = radius * 1.35
+        beam = QLinearGradient(0, base_y, 0, c.y())
+        beam.setColorAt(0.0, _color(ACCENT_CYAN, 70))
+        beam.setColorAt(1.0, _color(ACCENT_CYAN, 0))
+        cone = QPolygonF([
+            QPointF(c.x() - base_w * 0.5, base_y),
+            QPointF(c.x() + base_w * 0.5, base_y),
+            QPointF(c.x() + radius * 0.62, c.y()),
+            QPointF(c.x() - radius * 0.62, c.y()),
+        ])
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(beam)
+        painter.drawPolygon(cone)
+        for scale, alpha in ((1.0, 200), (0.66, 120), (0.33, 90)):
+            painter.setPen(QPen(_color(ACCENT_CYAN, alpha), 1.2))
+            painter.setBrush(_color(ACCENT_CYAN, 28 if scale == 1.0 else 0))
+            painter.drawEllipse(QPointF(c.x(), base_y), base_w * scale / 2, 4.5 * scale)
+
+    def _paint_emblem(self, painter: QPainter, c: QPointF, radius: float) -> None:
         t = self._t
+        painter.setOpacity(1.0)
 
         # tick ring
         for i in range(60):
@@ -162,17 +268,111 @@ class HologramCore(QWidget):
             )
 
 
+class HoloOverlay(QWidget):
+    """Transparent layer on top of a card: static scanlines, plus a soft band of
+    light that sweeps across now and then. Never takes mouse input."""
+
+    SWEEP_MS = 1100
+    FRAME_MS = 40
+    _tile: Optional[QPixmap] = None
+
+    def __init__(self, card: QWidget, accent: str, animated: bool = True) -> None:
+        super().__init__(card)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.setAttribute(Qt.WA_NoSystemBackground, True)
+        self._accent = accent
+        self._animated = animated
+        self._progress: Optional[float] = None
+        self._rng = random.Random()
+        self._idle = QTimer(self)
+        self._idle.setSingleShot(True)
+        self._idle.timeout.connect(self._start_sweep)
+        self._frames = QTimer(self)
+        self._frames.setInterval(self.FRAME_MS)
+        self._frames.timeout.connect(self._step)
+
+    @classmethod
+    def _scanlines(cls) -> QPixmap:
+        if cls._tile is None:
+            tile = QPixmap(1, 3)
+            tile.fill(Qt.transparent)
+            painter = QPainter(tile)
+            painter.fillRect(0, 0, 1, 1, QColor(0, 0, 0, 38))
+            painter.end()
+            cls._tile = tile
+        return cls._tile
+
+    def set_animated(self, animated: bool) -> None:
+        self._animated = animated
+        self._idle.stop()
+        self._frames.stop()
+        self._progress = None
+        if animated and self.isVisible():
+            self._schedule()
+        self.update()
+
+    def _schedule(self) -> None:
+        self._idle.start(self._rng.randint(3500, 9000))
+
+    def _start_sweep(self) -> None:
+        self._progress = 0.0
+        self._frames.start()
+
+    def _step(self) -> None:
+        assert self._progress is not None
+        self._progress += self.FRAME_MS / self.SWEEP_MS
+        if self._progress >= 1.0:
+            self._progress = None
+            self._frames.stop()
+            self._schedule()
+        self.update()
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        if self._animated and not self._idle.isActive() and not self._frames.isActive():
+            self._schedule()
+        super().showEvent(event)
+
+    def hideEvent(self, event) -> None:  # noqa: N802
+        self._idle.stop()
+        self._frames.stop()
+        self._progress = None
+        super().hideEvent(event)
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QBrush(self._scanlines()))
+        if self._progress is None:
+            return
+        w, h = self.width(), self.height()
+        x = -0.25 * w + self._progress * 1.5 * w
+        band = QLinearGradient(x - 70, 0, x + 70, 0)
+        band.setColorAt(0.0, _color(self._accent, 0))
+        band.setColorAt(0.5, _color(self._accent, 46))
+        band.setColorAt(1.0, _color(self._accent, 0))
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(band)
+        painter.drawPolygon(QPolygonF([QPointF(x - 70 + 24, 0), QPointF(x + 70 + 24, 0), QPointF(x + 70 - 24, h), QPointF(x - 70 - 24, h)]))
+
+
 class HudCard(QFrame):
     """Dark panel with HUD corner brackets and an optional small-caps title.
     Subclass or add widgets through `body`."""
 
     clicked = Signal(object)
 
-    def __init__(self, title: str = "", accent: str = ACCENT_CYAN, target=None, parent: Optional[QWidget] = None) -> None:
+    def __init__(
+        self,
+        title: str = "",
+        accent: str = ACCENT_CYAN,
+        target=None,
+        parent: Optional[QWidget] = None,
+        animated: bool = True,
+    ) -> None:
         super().__init__(parent)
         self._accent = accent
         self._target = target
         self._hover = False
+        self.holo = HoloOverlay(self, accent, animated)
         self.body = QVBoxLayout(self)
         self.body.setContentsMargins(16, 12, 16, 12)
         self.body.setSpacing(4)
@@ -182,6 +382,19 @@ class HudCard(QFrame):
             self.body.addWidget(self.title_label)
         if target is not None:
             self.setCursor(QCursor(Qt.PointingHandCursor))
+
+    def set_animated(self, animated: bool) -> None:
+        self.holo.set_animated(animated)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        self.holo.setGeometry(self.rect())
+        self.holo.raise_()  # keep the overlay above the labels added after it
+        super().resizeEvent(event)
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        self.holo.setGeometry(self.rect())
+        self.holo.raise_()
+        super().showEvent(event)
 
     def set_target(self, target) -> None:
         self._target = target
@@ -245,6 +458,7 @@ class StatCard(HudCard):
         super().__init__(title, accent, target, parent)
         self.setMinimumWidth(150)
         self.value_label = styled_label("-", 22, accent, 700)
+        add_glow(self.value_label, accent)
         self.caption_label = styled_label("", 9, TEXT_PRIMARY)
         self.hint_label = styled_label("", 8, TEXT_MUTED, wrap=True)
         self.body.addWidget(self.value_label)
@@ -324,11 +538,39 @@ class TimelineStrip(QWidget):
     """"Today -> next events" drawn as nodes on a line, evenly spaced (it is a
     sequence, not a to-scale calendar)."""
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    FRAME_MS = 50
+
+    def __init__(self, parent: Optional[QWidget] = None, animated: bool = True) -> None:
         super().__init__(parent)
         self._now: Optional[datetime] = None
         self._events: list[TimelineEvent] = []
+        self._animated = animated
+        self._phase = 0.0
+        self._timer = QTimer(self)
+        self._timer.setInterval(self.FRAME_MS)
+        self._timer.timeout.connect(self._advance)
         self.setMinimumHeight(92)
+
+    def set_animated(self, animated: bool) -> None:
+        self._animated = animated
+        if animated and self.isVisible():
+            self._timer.start()
+        else:
+            self._timer.stop()
+        self.update()
+
+    def _advance(self) -> None:
+        self._phase += self.FRAME_MS / 1000.0
+        self.update()
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        if self._animated:
+            self._timer.start()
+        super().showEvent(event)
+
+    def hideEvent(self, event) -> None:  # noqa: N802
+        self._timer.stop()
+        super().hideEvent(event)
 
     def set_events(self, now: datetime, events: list[TimelineEvent]) -> None:
         self._now = now
@@ -352,6 +594,20 @@ class TimelineStrip(QWidget):
         painter.setPen(QPen(_color(ACCENT_CYAN_DIM), 2))
         if count > 1:
             painter.drawLine(QPointF(xs[0], line_y), QPointF(xs[1], line_y))
+            if self._animated:  # a light travelling from today toward the next event
+                travel = (self._phase % 3.0) / 3.0
+                head = xs[0] + (xs[1] - xs[0]) * travel
+                glow = QRadialGradient(QPointF(head, line_y), 9)
+                glow.setColorAt(0.0, _color("#e9fffc", 230))
+                glow.setColorAt(1.0, _color(ACCENT_CYAN, 0))
+                painter.setPen(Qt.NoPen)
+                painter.setBrush(glow)
+                painter.drawEllipse(QPointF(head, line_y), 9, 9)
+        if self._animated:  # pulse ring around "today"
+            pulse = (self._phase % 1.8) / 1.8
+            painter.setBrush(Qt.NoBrush)
+            painter.setPen(QPen(_color(ACCENT_CYAN, int(190 * (1 - pulse))), 1.4))
+            painter.drawEllipse(QPointF(xs[0], line_y), 6 + 12 * pulse, 6 + 12 * pulse)
 
         name_font = QFont(self.font())
         name_font.setPointSizeF(8)

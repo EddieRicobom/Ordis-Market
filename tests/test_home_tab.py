@@ -130,6 +130,98 @@ class TestHomeTab(_QtCase):
         self.assertEqual(tab.card_ready.value_label.text(), "-")
 
 
+class TestHolographicEffects(_QtCase):
+    def make(self, animations):
+        self.report, self.items = None, []
+        return HomeTab(None, lambda: self.report, lambda: self.items, lambda: "x", lambda: NOW, animations=animations)
+
+    def test_effects_run_only_while_visible_and_when_enabled(self):
+        from app.ui.home_widgets import HoloOverlay
+
+        tab = self.make(True)
+        overlays = tab.findChildren(HoloOverlay)
+        self.assertGreaterEqual(len(overlays), 9)  # one per card
+        self.assertFalse(tab.core._timer.isActive())
+        tab.show()
+        self.assertTrue(tab.core._timer.isActive())
+        self.assertTrue(tab.timeline._timer.isActive())
+        self.assertTrue(all(o._idle.isActive() for o in overlays))  # a light sweep is scheduled
+        tab.set_animations(False)  # reduce motion
+        self.assertFalse(tab.core._timer.isActive())
+        self.assertFalse(tab.timeline._timer.isActive())
+        self.assertFalse(any(o._idle.isActive() or o._frames.isActive() for o in overlays))
+        tab.hide()
+
+    def test_animations_off_means_nothing_moves_from_the_start(self):
+        tab = self.make(False)
+        tab.show()
+        self.assertFalse(tab.core._timer.isActive())
+        self.assertFalse(tab._typer.isActive())
+        self.assertEqual(tab.lbl_headline.text(), "\u201c" + tab._headline_full.strip("\u201c\u201d") + "\u201d")
+        tab.hide()
+
+    def test_headline_types_itself_out_when_it_changes(self):
+        tab = self.make(True)
+        tab.show()
+        tab._set_headline("\u201cHello there, Operator.\u201d")  # a new line while visible
+        self.assertTrue(tab._typer.isActive())
+        tab._type_next()
+        self.assertTrue(tab.lbl_headline.text().endswith("\u258c"))
+        self.assertLess(len(tab.lbl_headline.text()), len("\u201cHello there, Operator.\u201d"))
+        for _ in range(40):
+            tab._type_next()
+        self.assertFalse(tab._typer.isActive())
+        self.assertEqual(tab.lbl_headline.text(), "\u201cHello there, Operator.\u201d")
+        tab._set_headline("\u201cHello there, Operator.\u201d")  # same line: no retype
+        self.assertFalse(tab._typer.isActive())
+        tab.hide()
+
+    def test_the_once_a_second_tick_does_not_restart_the_typing(self):
+        tab = self.make(True)
+        tab.show()
+        tab.tick()
+        line = tab._headline_full
+        for _ in range(60):
+            tab._type_next()
+        tab.tick()
+        tab.tick()
+        self.assertFalse(tab._typer.isActive())
+        self.assertEqual(tab._headline_full, line)
+        tab.hide()
+
+    def test_overlays_never_block_clicks(self):
+        from app.ui.home_widgets import HoloOverlay
+
+        tab = self.make(True)
+        for overlay in tab.findChildren(HoloOverlay):
+            self.assertTrue(overlay.testAttribute(Qt.WA_TransparentForMouseEvents))
+
+    def test_glitch_and_sweep_frames_paint_without_error(self):
+        from app.ui.home_widgets import HoloOverlay
+
+        tab = self.make(True)
+        tab.resize(1100, 700)
+        tab.show()
+        tab.core._glitch_until = tab.core._t + 10
+        self.assertTrue(tab.core.glitching())
+        for overlay in tab.findChildren(HoloOverlay):
+            overlay._progress = 0.5
+        tab.timeline._phase = 1.0
+        pixmap = tab.grab()  # renders every widget, including the glitch composite
+        self.assertFalse(pixmap.isNull())
+        tab.hide()
+
+    def test_glitches_happen_now_and_then(self):
+        tab = self.make(True)
+        tab.core._animated = True
+        seen = 0
+        for _ in range(600):  # ~20 s of frames
+            tab.core._advance()
+            seen += tab.core.glitching()
+        self.assertGreater(seen, 0)
+        self.assertLess(seen, 120)  # brief, not constant
+
+
 class TestMainWindowHome(_QtCase):
     def make_window(self, auto=False, min_age=600):
         tmp = Path(tempfile.mkdtemp())
@@ -225,6 +317,17 @@ class TestMainWindowHome(_QtCase):
         win._on_analysis_failed("again")  # a manual run still gets the dialog
         win._show_error.assert_called_once()
 
+    def test_reduce_motion_setting_reaches_the_home(self):
+        tmp = Path(tempfile.mkdtemp())
+        win = MainWindow(
+            InventoryParser(), InventoryRepository(tmp / "saved.json"),
+            PortfolioAnalyzer(MagicMock(), MagicMock(), AppSettings()),
+            relic_store=RelicDataStore(tmp / "r.json"), home_animations=False,
+        )
+        win.show()
+        self.assertFalse(win.home_tab.core._timer.isActive())
+        win.close()
+
     def test_auto_update_is_scheduled_only_when_enabled(self):
         with mock.patch("app.ui.main_window.QTimer.singleShot") as single_shot:
             self.make_window(auto=False)
@@ -244,6 +347,8 @@ class TestSettings(unittest.TestCase):
         s2 = AppSettings.from_dict(AppSettings(auto_update_market_on_start=False, auto_update_min_age_seconds=60).to_dict())
         self.assertFalse(s2.auto_update_market_on_start)
         self.assertEqual(s2.auto_update_min_age_seconds, 60)
+        self.assertTrue(AppSettings.from_dict({}).home_animations)
+        self.assertFalse(AppSettings.from_dict(AppSettings(home_animations=False).to_dict()).home_animations)
 
 
 if __name__ == "__main__":

@@ -52,6 +52,7 @@ from app.ui.home_widgets import (
     MiniBar,
     StatCard,
     TimelineStrip,
+    add_glow,
     styled_label,
 )
 from app.ui.theme import ACCENT_CYAN, ACCENT_GOLD, TEXT_MUTED, TEXT_PRIMARY
@@ -91,8 +92,15 @@ class HomeTab(QWidget):
         get_analyzed_text: Callable[[], str],
         now_provider: Callable[[], datetime] = _utc_now,
         parent: Optional[QWidget] = None,
+        animations: bool = True,
     ) -> None:
         super().__init__(parent)
+        self._animations = animations
+        self._headline_full = ""
+        self._typed = 0
+        self._typer = QTimer(self)
+        self._typer.setInterval(26)
+        self._typer.timeout.connect(self._type_next)
         self._store = store
         self._get_report = get_report
         self._get_items = get_items
@@ -111,6 +119,7 @@ class HomeTab(QWidget):
         self._clock.timeout.connect(self.tick)
 
         self._build_ui()
+        self.set_animations(animations)
         self.refresh()
 
     # -- construction ---------------------------------------------------------
@@ -139,7 +148,7 @@ class HomeTab(QWidget):
         card.setToolTip("Ordis, summing up what he knows right now.")
         row = QHBoxLayout()
         row.setSpacing(18)
-        self.core = HologramCore(132)
+        self.core = HologramCore(138)
         self.core.setToolTip("Ordis is watching.")
         row.addWidget(self.core)
         column = QVBoxLayout()
@@ -147,6 +156,8 @@ class HomeTab(QWidget):
         column.addStretch(1)
         column.addWidget(styled_label("ORDIS", 9, ACCENT_GOLD, 700, 3))
         self.lbl_headline = styled_label("", 16, TEXT_PRIMARY, 500, italic=True, wrap=True)
+        self.lbl_headline.setMinimumHeight(56)  # two lines: no layout jump while it types
+        add_glow(self.lbl_headline, ACCENT_CYAN, 14, 70)
         self.lbl_headline.setToolTip("A line chosen from a fixed set according to your situation (no AI involved).")
         column.addWidget(self.lbl_headline)
         self.lbl_meta = styled_label("", 9, TEXT_MUTED, wrap=True)
@@ -199,6 +210,7 @@ class HomeTab(QWidget):
         )
         self.baro_pill = styled_label("", 8, ACCENT_GOLD, 700, 1.5)
         self.baro_countdown = styled_label("", 24, ACCENT_GOLD, 700)
+        add_glow(self.baro_countdown, ACCENT_GOLD)
         self.baro_when = styled_label("", 9, TEXT_PRIMARY)
         self.baro_bar = MiniBar(ACCENT_GOLD)
         self.baro_extra = styled_label("", 8, TEXT_MUTED, wrap=True)
@@ -214,6 +226,7 @@ class HomeTab(QWidget):
         )
         self.res_pill = styled_label("", 8, ACCENT_CYAN, 700, 1.5)
         self.res_countdown = styled_label("", 24, ACCENT_CYAN, 700)
+        add_glow(self.res_countdown, ACCENT_CYAN)
         self.res_when = styled_label("", 9, TEXT_PRIMARY)
         self.res_bar = MiniBar(ACCENT_CYAN)
         self.res_extra = styled_label("", 8, TEXT_MUTED, wrap=True)
@@ -241,6 +254,40 @@ class HomeTab(QWidget):
             self._relic_data_loaded = True
             self._relic_data = self._store.load() if self._store is not None else None
         return self._relic_data
+
+    # -- holographic effects ----------------------------------------------------
+
+    def set_animations(self, enabled: bool) -> None:
+        """Turns every moving effect on or off (reduce-motion option)."""
+        self._animations = enabled
+        self.core.set_animated(enabled)
+        self.timeline.set_animated(enabled)
+        for card in self.findChildren(HudCard):
+            card.set_animated(enabled)
+        if not enabled:
+            self._typer.stop()
+            self.lbl_headline.setText(self._headline_full)
+
+    def _set_headline(self, text: str) -> None:
+        """Shows the Ordis line, typing it out when it changes (if animated)."""
+        if text == self._headline_full:
+            return
+        self._headline_full = text
+        if not self._animations or not self.isVisible():
+            self._typer.stop()
+            self.lbl_headline.setText(text)
+            return
+        self._typed = 0
+        self._typer.start()
+
+    def _type_next(self) -> None:
+        self._typed += 2
+        full = self._headline_full
+        if self._typed >= len(full):
+            self._typer.stop()
+            self.lbl_headline.setText(full)
+            return
+        self.lbl_headline.setText(full[: self._typed] + "\u258c")
 
     def set_busy(self, busy: bool) -> None:
         self._busy = busy
@@ -292,7 +339,7 @@ class HomeTab(QWidget):
             summary=self._summary,
             sets=self._sets,
         )
-        self.lbl_headline.setText(f"“{pick_headline(ctx)}”")
+        self._set_headline(f"“{pick_headline(ctx)}”")
         if self._busy:
             meta = "Analysis in progress..."
         elif self._summary is not None:

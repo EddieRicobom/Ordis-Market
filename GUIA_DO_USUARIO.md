@@ -77,6 +77,12 @@ Prime e dois calendários, organizados pra você ler em dez segundos.
   data no *seu* fuso e uma barra com o quanto do ciclo já passou.
 - **Coming up** são os próximos eventos, em ordem.
 
+**Efeitos holográficos:** o emblema é projetado de uma base e de vez em quando
+pisca com um glitch vermelho/ciano, os cards têm scanlines discretas e uma
+varredura de luz ocasional, os números brilham e a frase do Ordis é digitada
+quando muda. Só rodam enquanto a Home está na tela. Pra reduzir movimento,
+coloque `"home_animations": false` em `data/settings.json`.
+
 **Sobre essas datas:** o Ordis Market não se conecta ao jogo pra isso. O Baro é
 calculado pelo ciclo fixo dele (a cada 14 dias, sexta 13:00 UTC, 48 horas) e o
 Prime Resurgence pela rotação de 28 dias (quinta 18:00 UTC; ela anda em relação

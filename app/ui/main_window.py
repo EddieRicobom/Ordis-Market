@@ -214,6 +214,7 @@ class MainWindow(QMainWindow):
         relic_store: Optional[RelicDataStore] = None,
         auto_update_market: bool = False,
         auto_update_min_age_seconds: int = 600,
+        home_animations: bool = True,
     ) -> None:
         super().__init__()
         self._parser = inventory_parser
@@ -228,6 +229,7 @@ class MainWindow(QMainWindow):
         self.home_tab: Optional[HomeTab] = None
         self._auto_update_market = auto_update_market
         self._auto_update_min_age = auto_update_min_age_seconds
+        self._home_animations = home_animations
         self._analyzed_at: Optional[datetime] = None
         self._analysis_is_auto = False
         self._initial_catalog_count = initial_catalog_count
@@ -511,6 +513,7 @@ class MainWindow(QMainWindow):
                 get_report=lambda: self._report,
                 get_items=self._current_inventory_items,
                 get_analyzed_text=lambda: self.lbl_last_analysis.text(),
+                animations=self._home_animations,
             )
             self.home_tab.navigate.connect(self._on_home_navigate)
             self.relics_tab.data_updated.connect(self._on_relic_data_updated)

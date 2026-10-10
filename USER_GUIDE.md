@@ -77,6 +77,12 @@ progress and two calendars, laid out so you can read it in ten seconds.
   *your* time zone, and a bar with how far along the cycle is.
 - **Coming up** is the next few events in order.
 
+**Holographic effects:** the emblem projects from a base and now and then flickers
+with a red/cyan glitch, the cards get faint scanlines and an occasional sweep of
+light, the numbers glow, and Ordis' line types itself out when it changes. They
+only run while the Home is on screen. To reduce motion, set
+`"home_animations": false` in `data/settings.json`.
+
 **About those dates:** Ordis Market has no connection to the game for this. Baro
 is calculated from his fixed cycle (every 14 days, Friday 13:00 UTC, 48 hours) and
 Prime Resurgence from its 28-day rotation (Thursday 18:00 UTC; it drifts against

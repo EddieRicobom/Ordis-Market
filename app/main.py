@@ -156,6 +156,7 @@ def main() -> int:
         relic_store=relic_store,
         auto_update_market=settings.auto_update_market_on_start and not settings.offline_mode,
         auto_update_min_age_seconds=settings.auto_update_min_age_seconds,
+        home_animations=settings.home_animations,
     )
     window.show()
     return app.exec()
