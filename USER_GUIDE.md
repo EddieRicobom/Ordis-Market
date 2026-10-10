@@ -138,6 +138,34 @@ headers in the table explain themselves if you hover the mouse over them
 for a moment — if you're ever unsure what something does, just hover and
 wait.
 
+### 7. The RELICS tab
+
+Next to **MARKET** there's a **RELICS** tab. It answers: *"which Prime sets could
+I finish by cracking relics I already own?"*
+
+- It reads the same inventory you imported on the Market tab (parts **and**
+  relics). Import first, then open the tab. It refreshes by itself when you
+  import a new inventory.
+- The first time you open it, it downloads the relic drop tables once (about
+  10 MB, from the public WFCD *warframe-items* dataset) and keeps them on your
+  PC. After that it works offline. Press **UPDATE RELIC DATA** when new Primes
+  come out (the status line warns you when the data is over a week old).
+- Each row is a Prime set: parts you own, status, what's missing, and **which
+  of your relics to open** (best coverage first, e.g. `Neo C9 ×11 → Blueprint`).
+  Warframe parts count whether you hold the Blueprint (diagram) or the built
+  Component.
+- **Status:** *Completable* = every missing part drops from a relic you own;
+  *Partial* = only some do; *Complete* = nothing missing.
+- Use the drop-down to switch between *can be completed*, *partly covered*,
+  *already complete*, *every set I hold a part of* and *all Prime sets*, and the
+  search box to find a set. Click a row for the full breakdown underneath: each
+  missing part, which relics drop it, the chance per opening and the chance if
+  you open every copy you own.
+
+Odds shown are for the refinement you own (an Intact relic is worse than a
+Radiant one). Relics that aren't in the data (brand-new, or Requiem) are
+simply ignored.
+
 ---
 
 ## How to tell what's already loaded

@@ -49,7 +49,7 @@ There is deliberately **no** path from "Warframe Process" into this diagram.
 The only external I/O this application performs is:
 
 1. reading a local file the Operator explicitly selects (inventory import),
-2. HTTP GET requests to `api.warframe.market` (read-only, unauthenticated),
+2. HTTP GET requests to `api.warframe.market` (read-only, unauthenticated) and, for the Relics tab, to `raw.githubusercontent.com` (public WFCD dataset, on demand),
 3. reading/writing its own local cache and settings files under `data/`.
 
 ## Module responsibilities
@@ -77,6 +77,11 @@ The only external I/O this application performs is:
 | `analysis.portfolio` | Orchestrates the above per inventory item | Yes (delegated) |
 | `analysis.report_repository` | Persists/restores the last completed analysis for instant startup | No |
 | `export.exporter` | Report -> CSV/JSON/XLSX file | No |
+| `relics.models` | Plain data: relics, drop rewards, Prime sets/parts | No |
+| `relics.wfcd_source` | Downloads WFCD warframe-items (raw.githubusercontent.com) and builds `RelicData` | Yes |
+| `relics.store` | Disk cache of the derived relic data (`data/relic_data.json`) | No |
+| `relics.analyzer` | Inventory x drop tables -> per-set status and which owned relics to open | No |
+| `relics.view` | Filters, sort order and cell text for the Relics tab (no Qt) | No |
 | `integrations.launcher` | Opens `steam://run/230410` via the OS | No (delegates to OS/Steam) |
 | `integrations.inventory_helper` | Starts an Operator-selected external `.exe` as its own process | No (delegates to OS; the external program may do its own I/O) |
 | `inventory.watcher` | Polls a chosen folder for a new/updated import file | No |

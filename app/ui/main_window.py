@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QStatusBar,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -60,7 +61,9 @@ from app.inventory.repository import InventoryRepository
 from app.inventory.watcher import InventoryFileWatcher
 from app.market.ducats import DucatVerdict
 from app.ord_isms import messages as ordis
+from app.relics.store import RelicDataStore
 from app.ui.loading_indicator import LoadingIndicator
+from app.ui.relics_tab import RelicsTab
 from app.ui.sound_manager import get_sound_manager
 from app.ui.filters import LIQUIDITY_SORT_RANK, RECOMMENDATION_SORT_RANK, is_prime_set_name
 from app.ui.theme import ACCENT_CYAN, DANGER
@@ -205,6 +208,7 @@ class MainWindow(QMainWindow):
         initial_catalog_count: int = 0,
         initial_name_index_count: int = 0,
         initial_wiki_count: int = 0,
+        relic_store: Optional[RelicDataStore] = None,
     ) -> None:
         super().__init__()
         self._parser = inventory_parser
@@ -214,6 +218,8 @@ class MainWindow(QMainWindow):
         self._name_index_updater = name_index_updater
         self._wiki_index_builder = wiki_index_builder
         self._report_repo = report_repository
+        self._relic_store = relic_store
+        self.relics_tab: Optional[RelicsTab] = None
         self._initial_catalog_count = initial_catalog_count
         self._initial_name_index_count = initial_name_index_count
         self._initial_wiki_count = initial_wiki_count
@@ -479,9 +485,36 @@ class MainWindow(QMainWindow):
         self.table.cellClicked.connect(self._on_table_cell_clicked)
         layout.addWidget(self.table)
 
-        self.setCentralWidget(central)
+        if self._relic_store is None:
+            self.setCentralWidget(central)
+        else:
+            self.relics_tab = RelicsTab(
+                self._relic_store,
+                get_items=self._current_inventory_items,
+                start_worker=self._start_worker,
+                show_message=lambda text: self.statusBar().showMessage(text),
+            )
+            self.tabs = QTabWidget()
+            self.tabs.addTab(central, "MARKET")
+            self.tabs.addTab(self.relics_tab, "RELICS")
+            self.tabs.setTabToolTip(0, "Inventory analysis against live warframe.market prices.")
+            self.tabs.setTabToolTip(
+                1, "Prime sets you hold parts of, and which of your relics could complete them."
+            )
+            self.tabs.currentChanged.connect(self._on_tab_changed)
+            self.setCentralWidget(self.tabs)
         self.setStatusBar(QStatusBar())
         self.statusBar().showMessage(ordis.say(ordis.STARTUP))
+
+    # -- relics tab ------------------------------------------------------
+
+    def _current_inventory_items(self):
+        snapshot = self._inventory_repo.snapshot
+        return snapshot.items if snapshot is not None else ()
+
+    def _on_tab_changed(self, index: int) -> None:
+        if self.relics_tab is not None and self.tabs.widget(index) is self.relics_tab:
+            self.relics_tab.on_activated()
 
     # -- Steam launch --------------------------------------------------
 
@@ -633,6 +666,8 @@ class MainWindow(QMainWindow):
         self.lbl_last_analysis.setText("Last Analysis: - (import changed, please re-analyze)")
         self._refresh_table()
         self._update_button_states()
+        if self.relics_tab is not None:
+            self.relics_tab.reload()  # a different inventory: parts and relics changed
 
         message = ordis.say(ordis.WATCH_AUTO_IMPORTED) if auto else ordis.say(ordis.IMPORT_SUCCESS)
         if snapshot.unresolved_count:

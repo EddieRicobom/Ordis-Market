@@ -36,6 +36,7 @@ from app.inventory.repository import InventoryRepository
 from app.logging_setup import configure_logging
 from app.market.client import ClientConfig, WarframeMarketClient
 from app.market.repository import MarketRepository
+from app.relics.store import RelicDataStore
 
 
 def load_settings() -> AppSettings:
@@ -100,6 +101,8 @@ def main() -> int:
     wiki_index_builder = WikiIndexBuilder(wiki_index, WikiClient())
     logger.info("Wiki index loaded: %s known links", len(wiki_index))
 
+    relic_store = RelicDataStore(DATA_DIR / "relic_data.json")
+
     portfolio_analyzer = PortfolioAnalyzer(
         catalog, market_repo, settings, name_index=name_index, wiki_index=wiki_index
     )
@@ -150,6 +153,7 @@ def main() -> int:
         initial_catalog_count=catalog_result.entry_count,
         initial_name_index_count=name_index_result.entry_count,
         initial_wiki_count=len(wiki_index),
+        relic_store=relic_store,
     )
     window.show()
     return app.exec()
