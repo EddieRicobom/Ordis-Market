@@ -7,10 +7,14 @@ Creates Ordis-themed notification sounds programmatically.
 No external audio files required.
 """
 
-import wave
 import math
-import os
+import struct
+import wave
 from pathlib import Path
+from typing import Optional
+
+# <repo or app folder>/sounds, regardless of the directory the script is run from.
+DEFAULT_SOUNDS_DIR = Path(__file__).resolve().parents[2] / "sounds"
 
 
 class SoundGenerator:
@@ -18,10 +22,22 @@ class SoundGenerator:
     
     SAMPLE_RATE = 44100  # Standard CD quality
     
-    def __init__(self, output_dir: str = "sounds"):
+    EDGE_FADE_SECONDS = 0.003  # fades each tone in/out so joins between tones don't click
+
+    def __init__(self, output_dir: Optional[str] = None):
         """Initialize sound generator with output directory."""
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(exist_ok=True)
+        self.output_dir = Path(output_dir) if output_dir else DEFAULT_SOUNDS_DIR
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def _fade_edges(self, samples: list) -> list:
+        """Short linear fade at both ends of a tone (removes the click a hard
+        start/stop makes, especially where tones of different pitch are joined)."""
+        fade = min(int(self.EDGE_FADE_SECONDS * self.SAMPLE_RATE), len(samples) // 2)
+        for i in range(fade):
+            gain = i / fade
+            samples[i] = int(samples[i] * gain)
+            samples[-1 - i] = int(samples[-1 - i] * gain)
+        return samples
     
     def generate_sine_wave(self, frequency: float, duration: float, amplitude: float = 0.3) -> list:
         """
@@ -42,7 +58,7 @@ class SoundGenerator:
             sample = amplitude * math.sin(2 * math.pi * frequency * i / self.SAMPLE_RATE)
             samples.append(int(sample * 32767))  # Convert to 16-bit
         
-        return samples
+        return self._fade_edges(samples)
     
     def generate_frequency_sweep(self, start_freq: float, end_freq: float, 
                                   duration: float, amplitude: float = 0.3) -> list:
@@ -62,13 +78,14 @@ class SoundGenerator:
         samples = []
         
         for i in range(num_samples):
-            # Linear frequency interpolation
+            # Linear chirp: the phase is the integral of the instantaneous
+            # frequency, f(t) = start + (end - start) * t / duration.
             t = i / self.SAMPLE_RATE
-            current_freq = start_freq + (end_freq - start_freq) * (t / duration)
-            sample = amplitude * math.sin(2 * math.pi * current_freq * t)
+            phase = 2 * math.pi * (start_freq * t + (end_freq - start_freq) * t * t / (2 * duration))
+            sample = amplitude * math.sin(phase)
             samples.append(int(sample * 32767))  # Convert to 16-bit
         
-        return samples
+        return self._fade_edges(samples)
     
     def add_envelope(self, samples: list, attack: float = 0.05, 
                     decay: float = 0.1, sustain: float = 0.7, 
@@ -135,8 +152,10 @@ class SoundGenerator:
             wav_file.setnchannels(1)  # Mono
             wav_file.setsampwidth(2)  # 16-bit
             wav_file.setframerate(self.SAMPLE_RATE)
-            wav_file.writeframes(bytes([sample & 0xFF for sample in samples] + 
-                                      [sample >> 8 & 0xFF for sample in samples]))
+            # Interleaved little-endian int16 frames. (Writing all low bytes
+            # first and then all high bytes scrambles the audio into noise.)
+            clipped = [max(-32768, min(32767, int(sample))) for sample in samples]
+            wav_file.writeframes(struct.pack("<%dh" % len(clipped), *clipped))
     
     def generate_ordis_activate(self):
         """
@@ -240,9 +259,9 @@ class SoundGenerator:
             "notification": self.generate_ordis_notification(),
         }
         
-        print(f"✓ Sounds generated in {self.output_dir}/")
+        print(f"Sounds generated in {self.output_dir}/")
         for name, path in paths.items():
-            print(f"  ✓ {name}: {path}")
+            print(f"  {name}: {path}")
         
         return paths
 

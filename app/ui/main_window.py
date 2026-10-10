@@ -61,6 +61,7 @@ from app.inventory.watcher import InventoryFileWatcher
 from app.market.ducats import DucatVerdict
 from app.ord_isms import messages as ordis
 from app.ui.loading_indicator import LoadingIndicator
+from app.ui.sound_manager import get_sound_manager
 from app.ui.filters import LIQUIDITY_SORT_RANK, RECOMMENDATION_SORT_RANK, is_prime_set_name
 from app.ui.theme import ACCENT_CYAN, DANGER
 
@@ -241,6 +242,8 @@ class MainWindow(QMainWindow):
         self._load_persisted_inventory()
         self._load_persisted_report()
         self._update_button_states()
+        # Load the sound effects once the window is up, not on the first click.
+        QTimer.singleShot(500, get_sound_manager().preload)
 
     # -- worker thread lifetime --------------------------------------------
 
@@ -681,9 +684,8 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(False)
         self.loading_indicator.stop()
         
-        # v2.0: Sound effects disabled for now (causes UI freeze)
-        # Will be re-enabled in v2.1 with proper threading
-        
+        get_sound_manager().play_complete()
+
         self.lbl_tradable.setText(f"Tradable: {report.total_tradable_items}")
         self.lbl_value.setText(f"Estimated Value: {report.estimated_total_value:.0f}p")
 
@@ -724,6 +726,7 @@ class MainWindow(QMainWindow):
     def _on_analysis_failed(self, error: str) -> None:
         self.progress_bar.setVisible(False)
         self.loading_indicator.stop()
+        get_sound_manager().play_error()
         self._update_button_states()
         self._show_error(f"{ordis.market_is_being_difficult()}\n\n({error})")
 
@@ -773,6 +776,7 @@ class MainWindow(QMainWindow):
 
     def _on_update_items_failed(self, error: str) -> None:
         self.loading_indicator.stop()
+        get_sound_manager().play_error()
         self.btn_update_items.setEnabled(True)
         self._show_error(f"{ordis.say(ordis.CATALOG_UPDATE_FAILED)}\n\n({error})")
 
@@ -864,6 +868,7 @@ class MainWindow(QMainWindow):
 
     def _on_update_wiki_failed(self, error: str) -> None:
         self.loading_indicator.stop()
+        get_sound_manager().play_error()
         self.progress_bar.setVisible(False)
         self.btn_update_wiki.setEnabled(True)
         self._show_error(f"Operator, the Wiki did not respond.\n\n({error})")

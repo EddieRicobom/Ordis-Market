@@ -9,97 +9,17 @@ Improved interface with:
 - Better loading state indicators
 """
 
-from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
+from PySide6.QtWidgets import (QDialog, QVBoxLayout, QLabel,
                                QPushButton, QProgressBar, QTableWidget)
-from PySide6.QtCore import Qt, QTimer, Signal, QUrl, QEventLoop
-from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
-from PySide6.QtGui import QFont, QColor
-import random
-from pathlib import Path
+from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QFont
 
-from ordis_messages import (
-    get_random_loading_message,
-    get_random_completion_message,
-    get_random_error_message,
-    SoundEffects
+from app.ord_isms.messages import (
+    say_processing_v2 as get_random_loading_message,
+    say_analysis_complete_v2 as get_random_completion_message,
+    say_error_retry_v2 as get_random_error_message,
 )
-
-
-class SoundManager:
-    """Manages Ordis sound effects playback."""
-    
-    def __init__(self):
-        """Initialize sound manager."""
-        self.sounds = {}
-        self.audio_output = QAudioOutput()
-        self.current_player = None
-        self.sounds_enabled = True
-        self.load_sounds()
-    
-    def load_sounds(self):
-        """Load or generate sound effects."""
-        sounds_dir = Path("sounds")
-        
-        # Try to load existing sounds
-        sound_files = {
-            "activate": sounds_dir / "ordis_activate.wav",
-            "complete": sounds_dir / "ordis_complete.wav",
-            "error": sounds_dir / "ordis_error.wav",
-            "click": sounds_dir / "ordis_click.wav",
-            "notification": sounds_dir / "ordis_notification.wav",
-        }
-        
-        for name, path in sound_files.items():
-            if path.exists():
-                self.sounds[name] = str(path)
-        
-        # If sounds don't exist, generate them
-        if len(self.sounds) < 5:
-            try:
-                from sound_generator import SoundGenerator
-                generator = SoundGenerator()
-                self.sounds = generator.generate_all()
-            except Exception as e:
-                print(f"Warning: Could not generate sounds: {e}")
-                self.sounds_enabled = False
-    
-    def play_sound(self, sound_name: str):
-        """
-        Play a sound effect.
-        
-        Args:
-            sound_name: Name of sound to play (activate, complete, error, click, notification)
-        """
-        if not self.sounds_enabled or sound_name not in self.sounds:
-            return
-        
-        try:
-            sound_path = self.sounds[sound_name]
-            player = QMediaPlayer()
-            player.setAudioOutput(self.audio_output)
-            player.setSource(QUrl.fromLocalFile(sound_path))
-            player.play()
-            
-            # Keep reference to prevent garbage collection
-            self.current_player = player
-        except Exception as e:
-            print(f"Warning: Could not play sound {sound_name}: {e}")
-    
-    def play_start(self):
-        """Play process start sound."""
-        self.play_sound("activate")
-    
-    def play_complete(self):
-        """Play process complete sound."""
-        self.play_sound("complete")
-    
-    def play_error(self):
-        """Play error sound."""
-        self.play_sound("error")
-    
-    def play_click(self):
-        """Play button click sound."""
-        self.play_sound("click")
+from app.ui.sound_manager import get_sound_manager
 
 
 class LoadingDialog(QDialog):
@@ -120,7 +40,7 @@ class LoadingDialog(QDialog):
         self.setModal(True)
         self.setMinimumWidth(400)
         self.message_index = 0
-        self.sound_manager = SoundManager()
+        self.sound_manager = get_sound_manager()
         
         self.init_ui()
         self.start_message_rotation()
@@ -258,7 +178,7 @@ class EnhancedTableWidget(QTableWidget):
     def __init__(self, *args, **kwargs):
         """Initialize enhanced table widget."""
         super().__init__(*args, **kwargs)
-        self.sound_manager = SoundManager()
+        self.sound_manager = get_sound_manager()
         self.setup_styling()
     
     def setup_styling(self):

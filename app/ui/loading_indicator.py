@@ -28,13 +28,8 @@ from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
+from app.ui.sound_manager import get_sound_manager
 from app.ui.theme import ACCENT_CYAN
-
-try:
-    from app.ui.ui_enhanced import SoundManager
-    SOUND_AVAILABLE = False  # Disabled for v2.0 - causes UI freeze. Will fix in v2.1
-except (ImportError, Exception):
-    SOUND_AVAILABLE = False
 
 
 class OrokinSpinner(QWidget):
@@ -130,6 +125,7 @@ class LoadingIndicator(QWidget):
         self._message_timer.start(interval_ms)
         self._spinner.start()
         self.show()
+        get_sound_manager().play_start()  # best-effort: never raises
 
     def stop(self) -> None:
         self._message_timer.stop()

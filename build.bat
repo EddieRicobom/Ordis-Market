@@ -35,15 +35,18 @@ if exist dist rmdir /s /q dist
 if exist OrdisMarket.spec del /q OrdisMarket.spec
 
 echo [Ordis Market] Building OrdisMarket.exe with PyInstaller...
-REM No --add-data is needed: the app never reads data\sample_inventory.json
-REM at runtime (it's just a manual reference file for IMPORT INVENTORY),
-REM and OrdisMarket creates its own data\/logs\ folders next to the .exe
-REM automatically on first launch -- see app/config/settings.py for why
-REM that's anchored to the .exe's real location, not a temp folder.
+REM data\sample_inventory.json is not needed at runtime (it's just a manual
+REM reference file for IMPORT INVENTORY), and OrdisMarket creates its own
+REM data\/logs\ folders next to the .exe automatically on first launch -- see
+REM app/config/settings.py for why that's anchored to the .exe's real location,
+REM not a temp folder. The sound effects, however, ARE bundled (--add-data);
+REM app/ui/sound_manager.py finds them via sys._MEIPASS and, if they are ever
+REM missing, regenerates them into data\sounds on its own.
 python -m PyInstaller ^
     --name OrdisMarket ^
     --onefile ^
     --windowed ^
+    --add-data "sounds;sounds" ^
     app\main.py
 
 if errorlevel 1 (
