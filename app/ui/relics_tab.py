@@ -334,7 +334,27 @@ class RelicsTab(QWidget):
         self.lbl_count.setText(f"{len(statuses)} sets")
 
         selected_name = self._selected_set_name()
-        self.table.setSortingEnabled(False)  # otherwise Qt re-sorts after every setItem()
+        # Sorting and the auto-sized columns are switched off while the cells are
+        # replaced (Qt would re-sort / re-measure after every setItem(), which is
+        # quadratic with a visible table), then measured once at the end.
+        header = self.table.horizontalHeader()
+        self.table.setUpdatesEnabled(False)
+        self.table.setSortingEnabled(False)
+        for col in range(4):
+            header.setSectionResizeMode(col, QHeaderView.Fixed)
+        try:
+            self._fill_table(statuses)
+        finally:
+            self.table.setSortingEnabled(True)
+            for col in range(4):
+                header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
+            self.table.resizeRowsToContents()
+            self.table.setUpdatesEnabled(True)
+
+        self._restore_selection(selected_name)
+        self._on_selection_changed()
+
+    def _fill_table(self, statuses: list[SetStatus]) -> None:
         self.table.setRowCount(len(statuses))
         for row, status in enumerate(statuses):
             progress = status.owned_units / status.need_units if status.need_units else 0.0
@@ -355,11 +375,6 @@ class RelicsTab(QWidget):
             self.table.setItem(row, 2, state_item)
             self.table.setItem(row, 3, missing_item)
             self.table.setItem(row, 4, relics_item)
-        self.table.setSortingEnabled(True)
-        self.table.resizeRowsToContents()
-
-        self._restore_selection(selected_name)
-        self._on_selection_changed()
 
     def _selected_set_name(self) -> Optional[str]:
         rows = self.table.selectionModel().selectedRows() if self.table.selectionModel() else []
