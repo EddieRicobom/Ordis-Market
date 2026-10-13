@@ -125,5 +125,31 @@ class TestStartupRefresh(_QtCase):
         self.assertFalse(win._catalog_ready)
 
 
+class TestProgressEta(_QtCase):
+    def make_window(self):
+        tmp = Path(tempfile.mkdtemp())
+        win = MainWindow(
+            InventoryParser(), InventoryRepository(tmp / "saved.json"),
+            PortfolioAnalyzer(MagicMock(), MagicMock(), AppSettings()),
+        )
+        self.addCleanup(win.close)
+        return win
+
+    def test_progress_bar_shows_the_time_left_when_it_is_known(self):
+        win = self.make_window()
+        win._eta = MagicMock()
+        win._eta.update.return_value = 125.0
+        win._on_progress(300, 852)
+        self.assertEqual((win.progress_bar.value(), win.progress_bar.maximum()), (300, 852))
+        self.assertEqual(win.progress_bar.format(), "%v / %m  -  ~3 min left")
+
+        win._eta.update.return_value = None  # not enough data yet / nearly done
+        win._on_progress(301, 852)
+        self.assertEqual(win.progress_bar.format(), "%p%")
+
+    def test_progress_bar_has_a_tooltip(self):
+        self.assertIn("time left", self.make_window().progress_bar.toolTip())
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -47,6 +47,7 @@ from app.analysis.portfolio import (
     value_hints_from_report,
 )
 from app.analysis.report_repository import ReportRepository
+from app.common.eta import EtaEstimator, format_eta
 from app.catalog.updater import ItemCatalogUpdater, NameIndexUpdater
 from app.catalog.wiki_index_builder import WikiIndexBuilder
 from app.config.settings import APP_VERSION
@@ -213,6 +214,8 @@ class _WikiUpdateWorker(QThread):
 
 
 class MainWindow(QMainWindow):
+    _DEFAULT_PROGRESS_FORMAT = "%p%"
+
     def __init__(
         self,
         inventory_parser: InventoryParser,
@@ -253,6 +256,7 @@ class MainWindow(QMainWindow):
         # wait for the first (background) download; with a catalog on disk it
         # can run right away on that data.
         self._catalog_ready = initial_catalog_count > 0
+        self._eta = EtaEstimator()
         self._initial_catalog_count = initial_catalog_count
         self._initial_name_index_count = initial_name_index_count
         self._initial_wiki_count = initial_wiki_count
@@ -480,6 +484,10 @@ class MainWindow(QMainWindow):
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
+        self.progress_bar.setToolTip(
+            "Progress of the price analysis, with an estimate of the time left "
+            "(based on the speed of the last ~20 seconds)."
+        )
         layout.addWidget(self.progress_bar)
 
         self.loading_indicator = LoadingIndicator()
@@ -833,7 +841,9 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(ordis.say(ordis.ANALYSIS_START))
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
-        
+        self.progress_bar.setFormat(self._DEFAULT_PROGRESS_FORMAT)
+        self._eta.reset()
+
         # v2.0: Use expanded message pool with 5-second rotation
         message_pool = (
             ordis.ANALYSIS_START + ordis.PROCESSING_FLAVOR + ordis.PROCESSING_ANALYSIS
@@ -861,10 +871,15 @@ class MainWindow(QMainWindow):
     def _on_progress(self, current: int, total: int) -> None:
         self.progress_bar.setMaximum(max(total, 1))
         self.progress_bar.setValue(current)
+        eta_text = format_eta(self._eta.update(current, total))
+        self.progress_bar.setFormat(
+            f"%v / %m  -  {eta_text} left" if eta_text else self._DEFAULT_PROGRESS_FORMAT
+        )
 
     def _on_analysis_done(self, report: PortfolioReport) -> None:
         self._report = report
         self.progress_bar.setVisible(False)
+        self.progress_bar.setFormat(self._DEFAULT_PROGRESS_FORMAT)
         self.loading_indicator.stop()
         
         get_sound_manager().play_complete()
@@ -915,6 +930,7 @@ class MainWindow(QMainWindow):
 
     def _on_analysis_failed(self, error: str) -> None:
         self.progress_bar.setVisible(False)
+        self.progress_bar.setFormat(self._DEFAULT_PROGRESS_FORMAT)
         self.loading_indicator.stop()
         get_sound_manager().play_error()
         self._update_button_states()
