@@ -16,6 +16,8 @@ import json
 from pathlib import Path
 from typing import Optional
 
+from app.common.files import atomic_write_text
+
 
 class NameIndex:
     def __init__(self, storage_path: Path) -> None:
@@ -34,7 +36,7 @@ class NameIndex:
 
     def save(self) -> None:
         self._storage_path.parent.mkdir(parents=True, exist_ok=True)
-        self._storage_path.write_text(json.dumps(self._entries), encoding="utf-8")
+        atomic_write_text(self._storage_path, json.dumps(self._entries))
 
     def load_from_disk(self) -> bool:
         if not self._storage_path.exists():

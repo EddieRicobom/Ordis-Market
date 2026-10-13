@@ -24,6 +24,8 @@ from pathlib import Path
 from typing import Optional
 
 from app.analysis.portfolio import ItemAnalysis, PortfolioReport
+
+from app.common.files import atomic_write_text
 from app.config.settings import PricingStrategy
 from app.market.ducats import DucatComparison, DucatVerdict
 from app.market.liquidity import LiquidityLevel, LiquidityReport
@@ -180,7 +182,7 @@ class ReportRepository:
             "analyses": [_analysis_to_dict(a) for a in report.analyses],
         }
         self._storage_path.parent.mkdir(parents=True, exist_ok=True)
-        self._storage_path.write_text(json.dumps(payload), encoding="utf-8")
+        atomic_write_text(self._storage_path, json.dumps(payload))
 
     def load(self) -> Optional[tuple[PortfolioReport, str]]:
         """Returns (report, analyzed_at_iso) if a previous analysis is on

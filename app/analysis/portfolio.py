@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Callable, Mapping, Optional, Sequence
 
 from app.catalog.catalog import CatalogEntry, ItemCatalog
 from app.catalog.name_index import NameIndex
@@ -109,6 +109,62 @@ class PortfolioReport:
     """How many distinct market slugs had no usable data at all --
     neither live nor a stale cache -- during this analysis."""
 
+    cheap_reused_slug_count: int = 0
+    """During a forced refresh: how many low-value slugs were served from a
+    cache entry younger than CHEAP_ITEM_MAX_AGE_SECONDS instead of being
+    fetched again (see plan_fetch_order)."""
+
+
+# A forced refresh (UPDATE MARKET) re-fetches everything -- at warframe.market's
+# 3 requests/second that is minutes for a big inventory, most of it spent on
+# items worth almost nothing. With a value estimate per slug the analyzer
+# fetches the valuable ones first and lets the cheapest tail (the slugs that
+# together hold only CHEAP_TAIL_SHARE of the inventory's value) keep a cached
+# price as old as CHEAP_ITEM_MAX_AGE_SECONDS. Set CHEAP_TAIL_SHARE to 0 to
+# always re-fetch everything.
+CHEAP_TAIL_SHARE = 0.05
+CHEAP_ITEM_MAX_AGE_SECONDS = 12 * 60 * 60
+# Estimated value of a slug that has no known price yet; it ranks after the
+# valuable items but before the ones known to be worth nothing.
+UNKNOWN_SLUG_VALUE = 10.0
+
+
+def value_hints_from_report(report: Optional[PortfolioReport]) -> dict[str, float]:
+    """slug -> total value (all ranks/stacks) according to a previous report.
+    Slugs that had no price are left out (they count as 'unknown')."""
+    hints: dict[str, float] = {}
+    if report is None:
+        return hints
+    for analysis in report.analyses:
+        if analysis.slug and analysis.total_value is not None:
+            hints[analysis.slug] = hints.get(analysis.slug, 0.0) + analysis.total_value
+    return hints
+
+
+def plan_fetch_order(
+    slugs: Sequence[str],
+    hints: Mapping[str, float],
+    tail_share: float = CHEAP_TAIL_SHARE,
+) -> tuple[list[str], set[str]]:
+    """Returns (slugs ordered most valuable first, the 'cheap tail' slugs).
+
+    Slugs without a hint rank at UNKNOWN_SLUG_VALUE and are never part of the
+    cheap tail: only a price we actually know to be small justifies reusing an
+    older cache entry. The sort is stable, so ties keep inventory order."""
+    ordered = sorted(slugs, key=lambda s: -hints.get(s, UNKNOWN_SLUG_VALUE))
+    known_total = sum(hints[s] for s in ordered if s in hints)
+    cheap: set[str] = set()
+    if tail_share > 0 and known_total > 0:
+        threshold = known_total * (1.0 - tail_share)
+        running = 0.0
+        for slug in ordered:
+            if slug not in hints:
+                continue
+            if running >= threshold:
+                cheap.add(slug)
+            running += hints[slug]
+    return ordered, cheap
+
 
 class PortfolioAnalyzer:
     """Runs the full per-item analysis pipeline across an inventory
@@ -153,7 +209,11 @@ class PortfolioAnalyzer:
         snapshot: InventorySnapshot,
         progress_callback: Optional[Callable[[int, int], None]] = None,
         force_refresh: bool = False,
+        value_hints: Optional[Mapping[str, float]] = None,
     ) -> PortfolioReport:
+        """`value_hints` (slug -> value from a previous report) makes the
+        network phase fetch the most valuable slugs first and, on a forced
+        refresh, spares the cheap tail (see plan_fetch_order)."""
         total = len(snapshot.items)
         completed = 0
 
@@ -193,13 +253,23 @@ class PortfolioAnalyzer:
         orders_by_slug: dict[str, OrdersResult] = {}
         liquidity_by_slug: dict[str, LiquidityReport] = {}
 
+        unique_slugs = list(items_per_slug.keys())
+        cheap_slugs: set[str] = set()
+        if value_hints:
+            unique_slugs, cheap_slugs = plan_fetch_order(
+                unique_slugs, value_hints, CHEAP_TAIL_SHARE if force_refresh else 0.0
+            )
+
         def _fetch(slug: str) -> tuple[str, OrdersResult]:
             try:
+                if slug in cheap_slugs:
+                    return slug, self._repo.get_orders(
+                        slug, force_refresh=False, max_age_seconds=CHEAP_ITEM_MAX_AGE_SECONDS
+                    )
                 return slug, self._repo.get_orders(slug, force_refresh=force_refresh)
             except Exception as exc:  # noqa: BLE001 - one bad slug must not sink the batch
                 return slug, OrdersResult(item_orders=None, from_cache=False, stale=False, error=str(exc))
 
-        unique_slugs = list(items_per_slug.keys())
         if unique_slugs:
             worker_count = min(self._max_workers, len(unique_slugs))
             with ThreadPoolExecutor(max_workers=worker_count) as executor:
@@ -247,6 +317,11 @@ class PortfolioAnalyzer:
 
         stale_slugs = sum(1 for r in orders_by_slug.values() if r.stale)
         error_slugs = sum(1 for r in orders_by_slug.values() if r.item_orders is None)
+        reused_cheap = sum(
+            1
+            for slug in cheap_slugs
+            if (r := orders_by_slug.get(slug)) is not None and r.from_cache and not r.stale
+        )
 
         return PortfolioReport(
             analyses=tuple(analyses),
@@ -257,6 +332,7 @@ class PortfolioAnalyzer:
             catalog_matched_count=matched_count,
             stale_price_slug_count=stale_slugs,
             market_error_slug_count=error_slugs,
+            cheap_reused_slug_count=reused_cheap,
         )
 
     # -- internal ------------------------------------------------------

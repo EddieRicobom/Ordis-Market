@@ -91,8 +91,11 @@ the calendar month, it does not flip on the 1st). They match published dates fro
 Which Primes are in the Resurgence vault is not something it can know offline.
 
 **Automatic price refresh:** when you open the app with an inventory loaded, it
-refreshes the market prices by itself, exactly like pressing **UPDATE MARKET**
-(unless your last analysis is under 10 minutes old, or you are in offline mode).
+refreshes the market prices by itself (unless your last analysis is under
+10 minutes old, or you are in offline mode). Unlike **UPDATE MARKET** it does
+not force anything: prices still fresh in the cache are kept, so opening the
+app soon after a session is nearly instant. The catalog and item-name downloads
+also run in the background, so the window appears right away.
 To turn it off, set `"auto_update_market_on_start": false` in `data/settings.json`
 (and `"auto_update_min_age_seconds"` changes the 10-minute window).
 
@@ -164,7 +167,7 @@ reverse the order.
 | Button | When to use it |
 |---|---|
 | **UPDATE ITEMS** | If you think the catalog is out of date (rarely needed — it already refreshes itself). |
-| **UPDATE MARKET** | If you want fresher prices, skipping whatever's already cached. |
+| **UPDATE MARKET** | If you want fresher prices. Fetches the most valuable items first; the cheapest ones (the last 5% of your inventory's value) keep prices fetched in the last 12 h, which cuts a big refresh roughly in half. |
 | **UPDATE WIKI** | Looks up Wiki links for the items in your current analysis. **Can take a while** on a large inventory — that's expected, it's a polite, one-item-at-a-time lookup on a third-party site. It's fast on future runs, since it remembers what it already looked up. |
 | **EXPORT** | Saves the current table to CSV, JSON, or Excel. |
 
