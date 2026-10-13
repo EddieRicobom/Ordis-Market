@@ -29,6 +29,13 @@ class OrdersResult:
     error: Optional[str] = None
 
 
+# Cache payload version. v1 (no "v" key) did not store each order's mod_rank, so
+# a ranked mod read back from a v1 file looked like it had no listings at its
+# rank. Fresh reads ignore v1 payloads (they are re-fetched); they stay usable
+# as a stale / offline fallback.
+CACHE_FORMAT = 2
+
+
 def _orders_to_json(item_orders: ItemOrders) -> dict:
     def order_dict(o: MarketOrder) -> dict:
         return {
@@ -37,9 +44,11 @@ def _orders_to_json(item_orders: ItemOrders) -> dict:
             "quantity": o.quantity,
             "user_online": o.user_online,
             "user_status": o.user_status,
+            "mod_rank": o.mod_rank,
         }
 
     return {
+        "v": CACHE_FORMAT,
         "slug": item_orders.slug,
         "sell_orders": [order_dict(o) for o in item_orders.sell_orders],
         "buy_orders": [order_dict(o) for o in item_orders.buy_orders],
@@ -55,6 +64,7 @@ def _orders_from_json(payload: dict) -> ItemOrders:
             quantity=raw["quantity"],
             user_online=raw["user_online"],
             user_status=raw["user_status"],
+            mod_rank=raw.get("mod_rank"),
         )
 
     return ItemOrders(
@@ -76,12 +86,19 @@ class MarketRepository:
         self._cache = cache
         self.offline_mode = offline_mode
 
-    def get_orders(self, slug: str, force_refresh: bool = False) -> OrdersResult:
+    def get_orders(
+        self,
+        slug: str,
+        force_refresh: bool = False,
+        max_age_seconds: Optional[float] = None,
+    ) -> OrdersResult:
+        """`max_age_seconds`, when given, replaces the cache TTL for this call
+        (it has no effect together with force_refresh)."""
         cache_key = f"orders_{slug}"
 
         if not force_refresh and not self.offline_mode:
-            cached = self._cache.get(cache_key)
-            if cached is not None:
+            cached = self._cache.get(cache_key, max_age_seconds=max_age_seconds)
+            if cached is not None and cached.get("v") == CACHE_FORMAT:
                 return OrdersResult(
                     item_orders=_orders_from_json(cached), from_cache=True, stale=False
                 )

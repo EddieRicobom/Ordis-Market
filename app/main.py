@@ -71,26 +71,17 @@ def main() -> int:
     catalog_updater = ItemCatalogUpdater(
         catalog, market_client, DATA_DIR / "catalog_meta.txt", settings.catalog_ttl_seconds
     )
-    catalog_result = catalog_updater.ensure_fresh()
-    logger.info(
-        "Catalog ready: %s entries (updated=%s, cache=%s)",
-        catalog_result.entry_count,
-        catalog_result.updated,
-        catalog_result.used_cache,
-    )
-
     name_index = NameIndex(DATA_DIR / "name_index.json")
     name_index_updater = NameIndexUpdater(
         name_index, DATA_DIR / "name_index_meta.txt", settings.name_index_ttl_seconds
     )
-    name_index_result = name_index_updater.ensure_fresh()
-    logger.info(
-        "Name index ready: %s entries (updated=%s, cache=%s, error=%s)",
-        name_index_result.entry_count,
-        name_index_result.updated,
-        name_index_result.used_cache,
-        name_index_result.error,
-    )
+    # Only the local copies are read here. Downloading a newer catalog / name
+    # index (when the daily TTL has run out) happens in the background once the
+    # window is up -- see MainWindow(refresh_catalog_on_start=True) -- instead of
+    # holding the first paint hostage to the network.
+    catalog.load_from_disk()
+    name_index.load_from_disk()
+    logger.info("Catalog on disk: %s entries; name index: %s entries", len(catalog), len(name_index))
 
     inventory_parser = InventoryParser()
     inventory_repo = InventoryRepository(DATA_DIR / "inventory.json")
@@ -150,13 +141,14 @@ def main() -> int:
         name_index_updater,
         wiki_index_builder,
         report_repo,
-        initial_catalog_count=catalog_result.entry_count,
-        initial_name_index_count=name_index_result.entry_count,
+        initial_catalog_count=len(catalog),
+        initial_name_index_count=len(name_index),
         initial_wiki_count=len(wiki_index),
         relic_store=relic_store,
         auto_update_market=settings.auto_update_market_on_start and not settings.offline_mode,
         auto_update_min_age_seconds=settings.auto_update_min_age_seconds,
         home_animations=settings.home_animations,
+        refresh_catalog_on_start=True,
     )
     window.show()
     return app.exec()

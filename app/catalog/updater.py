@@ -24,6 +24,7 @@ from typing import Callable, Optional
 from app.catalog.catalog import ItemCatalog
 from app.catalog.name_index import NameIndex
 from app.catalog.warframe_export import WarframeExportError, fetch_unique_name_index
+from app.common.files import atomic_write_text
 from app.market.client import MarketClientError, WarframeMarketClient
 
 
@@ -48,7 +49,7 @@ class _TtlGate:
 
     def mark_fresh(self) -> None:
         self._meta_path.parent.mkdir(parents=True, exist_ok=True)
-        self._meta_path.write_text(str(time.time()), encoding="utf-8")
+        atomic_write_text(self._meta_path, str(time.time()))
 
 
 @dataclass

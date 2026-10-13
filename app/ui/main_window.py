@@ -39,8 +39,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.analysis.portfolio import ItemAnalysis, PortfolioAnalyzer, PortfolioReport
+from app.analysis.portfolio import (
+    CHEAP_ITEM_MAX_AGE_SECONDS,
+    ItemAnalysis,
+    PortfolioAnalyzer,
+    PortfolioReport,
+    value_hints_from_report,
+)
 from app.analysis.report_repository import ReportRepository
+from app.common.eta import EtaEstimator, format_eta
 from app.catalog.updater import ItemCatalogUpdater, NameIndexUpdater
 from app.catalog.wiki_index_builder import WikiIndexBuilder
 from app.config.settings import APP_VERSION
@@ -109,11 +116,18 @@ class _AnalysisWorker(QThread):
     finished_ok = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, analyzer: PortfolioAnalyzer, snapshot, force_refresh: bool = False):
+    def __init__(
+        self,
+        analyzer: PortfolioAnalyzer,
+        snapshot,
+        force_refresh: bool = False,
+        value_hints: Optional[dict] = None,
+    ):
         super().__init__()
         self._analyzer = analyzer
         self._snapshot = snapshot
         self._force_refresh = force_refresh
+        self._value_hints = value_hints
 
     def _report_progress(self, current: int, total: int) -> None:
         if self.isInterruptionRequested():
@@ -126,6 +140,7 @@ class _AnalysisWorker(QThread):
                 self._snapshot,
                 progress_callback=self._report_progress,
                 force_refresh=self._force_refresh,
+                value_hints=self._value_hints,
             )
             self.finished_ok.emit(report)
         except _AnalysisCancelled:
@@ -199,6 +214,8 @@ class _WikiUpdateWorker(QThread):
 
 
 class MainWindow(QMainWindow):
+    _DEFAULT_PROGRESS_FORMAT = "%p%"
+
     def __init__(
         self,
         inventory_parser: InventoryParser,
@@ -215,6 +232,7 @@ class MainWindow(QMainWindow):
         auto_update_market: bool = False,
         auto_update_min_age_seconds: int = 600,
         home_animations: bool = True,
+        refresh_catalog_on_start: bool = False,
     ) -> None:
         super().__init__()
         self._parser = inventory_parser
@@ -232,6 +250,13 @@ class MainWindow(QMainWindow):
         self._home_animations = home_animations
         self._analyzed_at: Optional[datetime] = None
         self._analysis_is_auto = False
+        self._refresh_catalog_on_start = refresh_catalog_on_start
+        self._catalog_worker_is_startup = False
+        # Without any catalog entries nothing can be priced, so ANALYZE has to
+        # wait for the first (background) download; with a catalog on disk it
+        # can run right away on that data.
+        self._catalog_ready = initial_catalog_count > 0
+        self._eta = EtaEstimator()
         self._initial_catalog_count = initial_catalog_count
         self._initial_name_index_count = initial_name_index_count
         self._initial_wiki_count = initial_wiki_count
@@ -262,6 +287,8 @@ class MainWindow(QMainWindow):
         self._update_button_states()
         # Load the sound effects once the window is up, not on the first click.
         QTimer.singleShot(500, get_sound_manager().preload)
+        if self._refresh_catalog_on_start and self._catalog_updater is not None:
+            QTimer.singleShot(0, self._start_startup_refresh)
         if self._auto_update_market:
             QTimer.singleShot(1500, self._maybe_auto_update_market)
 
@@ -457,6 +484,10 @@ class MainWindow(QMainWindow):
 
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
+        self.progress_bar.setToolTip(
+            "Progress of the price analysis, with an estimate of the time left "
+            "(based on the speed of the last ~20 seconds)."
+        )
         layout.addWidget(self.progress_bar)
 
         self.loading_indicator = LoadingIndicator()
@@ -600,11 +631,17 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentWidget(self._market_page)
 
     def _maybe_auto_update_market(self) -> None:
-        """On launch, do what UPDATE MARKET does -- unless there is nothing to price,
-        an analysis is already running, or the last one is fresh enough."""
+        """On launch, refresh the prices -- unless there is nothing to price,
+        an analysis is already running, the catalog is still being downloaded
+        (this is called again when that finishes) or the last analysis is
+        fresh enough. Unlike the UPDATE MARKET button it does not force
+        anything: prices still fresh in the cache are reused, so an open
+        shortly after the last session costs next to nothing."""
         if self._inventory_repo.snapshot is None:
             return
         if self._worker is not None and self._worker.isRunning():
+            return
+        if self._startup_refresh_running():
             return
         if self._analyzed_at is not None:
             age = (datetime.now(timezone.utc) - self._analyzed_at).total_seconds()
@@ -612,7 +649,7 @@ class MainWindow(QMainWindow):
                 return
         self._analysis_is_auto = True
         self.statusBar().showMessage("Operator, I am refreshing the market prices while you get settled.")
-        self._on_update_market_clicked()
+        self._on_analyze_clicked()
 
     # -- Steam launch --------------------------------------------------
 
@@ -788,6 +825,12 @@ class MainWindow(QMainWindow):
             self._show_error("Operator, please import an inventory first. I have nothing to analyze.")
             return
 
+        if not self._catalog_ready and self._startup_refresh_running():
+            self.statusBar().showMessage(
+                "Operator, I am still downloading the item catalog for the first time. One moment."
+            )
+            return
+
         if self._worker is not None and self._worker.isRunning():
             # ANALYZE is re-enabled from inside the "done" slot, while the old
             # thread is still winding down -- don't start (or replace) a worker
@@ -798,7 +841,9 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(ordis.say(ordis.ANALYSIS_START))
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
-        
+        self.progress_bar.setFormat(self._DEFAULT_PROGRESS_FORMAT)
+        self._eta.reset()
+
         # v2.0: Use expanded message pool with 5-second rotation
         message_pool = (
             ordis.ANALYSIS_START + ordis.PROCESSING_FLAVOR + ordis.PROCESSING_ANALYSIS
@@ -812,7 +857,12 @@ class MainWindow(QMainWindow):
         force_refresh = self._force_refresh_next_analysis
         self._force_refresh_next_analysis = False
 
-        self._worker = _AnalysisWorker(self._analyzer, snapshot, force_refresh=force_refresh)
+        self._worker = _AnalysisWorker(
+            self._analyzer,
+            snapshot,
+            force_refresh=force_refresh,
+            value_hints=value_hints_from_report(self._report),
+        )
         self._worker.progress.connect(self._on_progress)
         self._worker.finished_ok.connect(self._on_analysis_done)
         self._worker.failed.connect(self._on_analysis_failed)
@@ -821,10 +871,15 @@ class MainWindow(QMainWindow):
     def _on_progress(self, current: int, total: int) -> None:
         self.progress_bar.setMaximum(max(total, 1))
         self.progress_bar.setValue(current)
+        eta_text = format_eta(self._eta.update(current, total))
+        self.progress_bar.setFormat(
+            f"%v / %m  -  {eta_text} left" if eta_text else self._DEFAULT_PROGRESS_FORMAT
+        )
 
     def _on_analysis_done(self, report: PortfolioReport) -> None:
         self._report = report
         self.progress_bar.setVisible(False)
+        self.progress_bar.setFormat(self._DEFAULT_PROGRESS_FORMAT)
         self.loading_indicator.stop()
         
         get_sound_manager().play_complete()
@@ -859,10 +914,12 @@ class MainWindow(QMainWindow):
                 f" {ordis.say(ordis.MARKET_UNAVAILABLE_OFFLINE)} "
                 f"({report.stale_price_slug_count} item(s) used slightly stale cached prices.)"
             )
-        # No message appended in the normal case -- the report only
-        # distinguishes "had to fall back" from "didn't", not "used a
-        # still-fresh cache vs. a live call", so there's nothing accurate
-        # to say beyond the summary line above when nothing went wrong.
+        if report.cheap_reused_slug_count:
+            message += (
+                f" Most valuable items first; {report.cheap_reused_slug_count} low-value "
+                f"item(s) kept prices fetched in the last "
+                f"{CHEAP_ITEM_MAX_AGE_SECONDS // 3600}h."
+            )
 
         if any(a.ducats is not None and a.ducats.verdict != DucatVerdict.INSUFFICIENT_DATA for a in report.analyses):
             message += f" {ordis.say(ordis.DUCATS_DONE)}"
@@ -873,6 +930,7 @@ class MainWindow(QMainWindow):
 
     def _on_analysis_failed(self, error: str) -> None:
         self.progress_bar.setVisible(False)
+        self.progress_bar.setFormat(self._DEFAULT_PROGRESS_FORMAT)
         self.loading_indicator.stop()
         get_sound_manager().play_error()
         self._update_button_states()
@@ -889,9 +947,63 @@ class MainWindow(QMainWindow):
 
     # -- catalog / market refresh -----------------------------------------
 
+    def _startup_refresh_running(self) -> bool:
+        return (
+            self._catalog_worker_is_startup
+            and self._catalog_worker is not None
+            and self._catalog_worker.isRunning()
+        )
+
+    def _start_startup_refresh(self) -> None:
+        """Brings the catalog and the DE name index up to date after the window
+        is already on screen. Both only hit the network when their cache has
+        expired (about once a day), and a slow or absent connection used to
+        delay the very first paint by up to ~30 s."""
+        if self._catalog_updater is None or self._catalog_worker_is_startup:
+            return
+        if self._catalog_worker is not None and self._catalog_worker.isRunning():
+            return
+        self._catalog_worker_is_startup = True
+        self._catalog_worker = _CatalogUpdateWorker(
+            self._catalog_updater, force=False, name_index_updater=self._name_index_updater
+        )
+        self._catalog_worker.finished_ok.connect(self._on_startup_refresh_done)
+        self._catalog_worker.failed.connect(self._on_startup_refresh_failed)
+        self._start_worker(self._catalog_worker)
+
+    def _on_startup_refresh_done(self, catalog_result, name_index_result) -> None:
+        self._catalog_worker_is_startup = False
+        self._catalog_ready = catalog_result.entry_count > 0
+        self.lbl_catalog_status.setText(f"Catalog: {catalog_result.entry_count} items known")
+        if name_index_result is not None:
+            self.lbl_names_status.setText(f"Item Names: {name_index_result.entry_count} known")
+        if catalog_result.error and not catalog_result.used_cache:
+            self.statusBar().showMessage(
+                f"{ordis.say(ordis.CATALOG_UPDATE_FAILED)} ({catalog_result.error})"
+            )
+        elif catalog_result.updated:
+            self.statusBar().showMessage(
+                f"Operator, the item catalog is up to date ({catalog_result.entry_count} items)."
+            )
+        self._after_startup_refresh()
+
+    def _on_startup_refresh_failed(self, error: str) -> None:
+        self._catalog_worker_is_startup = False
+        self.statusBar().showMessage(f"Operator, I could not refresh the item catalog ({error}).")
+        self._after_startup_refresh()
+
+    def _after_startup_refresh(self) -> None:
+        # The launch-time price refresh was waiting for the catalog.
+        if self._auto_update_market:
+            QTimer.singleShot(0, self._maybe_auto_update_market)
+
     def _on_update_items_clicked(self) -> None:
         if self._catalog_updater is None:
             self._show_error("Operator, the item catalog isn't wired up in this session.")
+            return
+
+        if self._catalog_worker is not None and self._catalog_worker.isRunning():
+            self.statusBar().showMessage("Operator, the catalog is already being refreshed. One moment.")
             return
 
         self.statusBar().showMessage(ordis.say(ordis.CATALOG_UPDATE_START))
@@ -1261,7 +1373,8 @@ class MainWindow(QMainWindow):
 
         self.btn_update_market.setEnabled(has_inventory)
         self.btn_update_market.setToolTip(
-            "Re-runs analysis, ignoring the price cache, for fresher numbers."
+            "Fetches fresh prices, most valuable items first. The cheapest items "
+            "keep prices fetched in the last 12 h to save time."
             if has_inventory
             else "Import an inventory first -- there's nothing to price yet."
         )

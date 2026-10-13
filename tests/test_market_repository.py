@@ -71,6 +71,55 @@ class TestMarketRepository(unittest.TestCase):
         self.assertTrue(result.stale)
         self.assertIsNotNone(result.error)
 
+    def test_cache_keeps_the_mod_rank_of_each_order(self):
+        # Regression: mod_rank was dropped on save, so a cached ranked mod had
+        # no listings "at its rank" and was priced as N/A.
+        ranked = ItemOrders(
+            slug="serration",
+            sell_orders=(
+                MarketOrder(OrderType.SELL, 5.0, 1, True, "ingame", mod_rank=0),
+                MarketOrder(OrderType.SELL, 40.0, 1, True, "ingame", mod_rank=10),
+            ),
+            buy_orders=(MarketOrder(OrderType.BUY, 3.0, 1, True, "ingame", mod_rank=10),),
+            fetched_at=time.time(),
+        )
+        client = MagicMock()
+        client.get_orders_for_item.return_value = ranked
+        repo = MarketRepository(client, self.cache)
+        repo.get_orders("serration")
+
+        cached = repo.get_orders("serration")
+        self.assertTrue(cached.from_cache)
+        self.assertEqual([o.mod_rank for o in cached.item_orders.sell_orders], [0, 10])
+        self.assertEqual([o.mod_rank for o in cached.item_orders.buy_orders], [10])
+        client.get_orders_for_item.assert_called_once()
+
+    def test_legacy_cache_without_mod_rank_is_refetched_but_still_a_stale_fallback(self):
+        legacy = {
+            "slug": "serration",
+            "sell_orders": [
+                {"order_type": "sell", "platinum": 40.0, "quantity": 1, "user_online": True, "user_status": "ingame"}
+            ],
+            "buy_orders": [],
+            "fetched_at": time.time(),
+        }
+        self.cache.set("orders_serration", legacy)
+        client = MagicMock()
+        client.get_orders_for_item.return_value = sample_orders("serration")
+        repo = MarketRepository(client, self.cache)
+
+        result = repo.get_orders("serration")  # fresh by TTL, but v1 -> must hit the network
+        self.assertFalse(result.from_cache)
+        client.get_orders_for_item.assert_called_once()
+
+        # A v1 file is still better than nothing when the network is down.
+        self.cache.set("orders_other", {**legacy, "slug": "other"})
+        client.get_orders_for_item.side_effect = MarketUnavailableError("down")
+        fallback = repo.get_orders("other")
+        self.assertTrue(fallback.from_cache)
+        self.assertTrue(fallback.stale)
+        self.assertIsNone(fallback.item_orders.sell_orders[0].mod_rank)
+
     def test_network_failure_without_cache_returns_error(self):
         client = MagicMock()
         client.get_orders_for_item.side_effect = MarketUnavailableError("down")

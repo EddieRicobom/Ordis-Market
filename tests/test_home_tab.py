@@ -278,7 +278,7 @@ class TestMainWindowHome(_QtCase):
     def test_auto_update_runs_only_when_it_makes_sense(self):
         win = self.make_window(auto=True)
         calls = []
-        win._on_update_market_clicked = lambda: calls.append(1)
+        win._on_analyze_clicked = lambda: calls.append(1)
 
         win._maybe_auto_update_market()
         self.assertEqual(calls, [])  # nothing imported: nothing to price
@@ -287,6 +287,7 @@ class TestMainWindowHome(_QtCase):
         win._maybe_auto_update_market()
         self.assertEqual(calls, [1])  # inventory but never analyzed
         self.assertTrue(win._analysis_is_auto)
+        self.assertFalse(win._force_refresh_next_analysis)  # reuses prices that are still fresh
 
         win._analysis_is_auto = False
         win._analyzed_at = datetime.now(UTC) - timedelta(minutes=2)
@@ -297,13 +298,28 @@ class TestMainWindowHome(_QtCase):
         win._maybe_auto_update_market()
         self.assertEqual(calls, [1, 1])  # stale: refresh
 
+    def test_auto_update_waits_for_the_startup_catalog_refresh(self):
+        win = self.make_window(auto=True)
+        self.import_inventory(win)
+        calls = []
+        win._on_analyze_clicked = lambda: calls.append(1)
+        win._catalog_worker = MagicMock()
+        win._catalog_worker.isRunning.return_value = True
+        win._catalog_worker_is_startup = True
+        win._maybe_auto_update_market()
+        self.assertEqual(calls, [])  # the catalog is still being refreshed
+
+        win._catalog_worker.isRunning.return_value = False
+        win._maybe_auto_update_market()
+        self.assertEqual(calls, [1])
+
     def test_auto_update_skips_while_an_analysis_is_running(self):
         win = self.make_window(auto=True)
         self.import_inventory(win)
         win._worker = MagicMock()
         win._worker.isRunning.return_value = True
         calls = []
-        win._on_update_market_clicked = lambda: calls.append(1)
+        win._on_analyze_clicked = lambda: calls.append(1)
         win._maybe_auto_update_market()
         self.assertEqual(calls, [])
 

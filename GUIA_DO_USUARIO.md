@@ -91,9 +91,12 @@ ao mês do calendário, não vira todo dia 1). Batem com datas publicadas de 202
 Quais Primes estão no cofre do Resurgence ele não tem como saber offline.
 
 **Atualização automática de preços:** ao abrir o programa com um inventário
-carregado, ele atualiza os preços do mercado sozinho, exatamente como apertar
-**UPDATE MARKET** (a menos que a última análise tenha menos de 10 minutos ou você
-esteja no modo offline). Pra desligar, coloque `"auto_update_market_on_start": false`
+carregado, ele atualiza os preços do mercado sozinho (a menos que a última
+análise tenha menos de 10 minutos ou você esteja no modo offline). Diferente do
+**UPDATE MARKET**, ele não força nada: preços ainda frescos no cache são
+mantidos, então abrir o programa logo depois de uma sessão é quase instantâneo.
+Os downloads do catálogo e dos nomes de itens também rodam em segundo plano, e a
+janela aparece na hora. Pra desligar, coloque `"auto_update_market_on_start": false`
 em `data/settings.json` (e `"auto_update_min_age_seconds"` muda a janela de 10 min).
 
 ---
@@ -164,7 +167,7 @@ Clique de novo pra inverter a ordem.
 | Botão | Quando usar |
 |---|---|
 | **UPDATE ITEMS** | Se acha que o catálogo está desatualizado (raro, ele já se atualiza sozinho). |
-| **UPDATE MARKET** | Se quer preços mais frescos, ignorando o que já está guardado em cache. |
+| **UPDATE MARKET** | Se quer preços mais frescos. Busca os itens mais valiosos primeiro; os mais baratos (os últimos 5% do valor do inventário) mantêm preços buscados nas últimas 12 h, o que reduz uma atualização grande pela metade. |
 | **UPDATE WIKI** | Pra buscar os links da Wiki dos itens da análise atual. **Pode demorar** num inventário grande — é normal, é uma busca educada num site de terceiros, item por item. Da segunda vez em diante é rápido, porque ele lembra o que já buscou. |
 | **EXPORT** | Salva a tabela atual em CSV, JSON ou Excel. |
 

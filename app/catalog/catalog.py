@@ -16,6 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional
 
+from app.common.files import atomic_write_text
+
 
 @dataclass(frozen=True)
 class CatalogEntry:
@@ -165,7 +167,7 @@ class ItemCatalog:
             }
             for e in self._entries.values()
         ]
-        self._storage_path.write_text(json.dumps(payload), encoding="utf-8")
+        atomic_write_text(self._storage_path, json.dumps(payload))
 
     def load_from_disk(self) -> bool:
         if not self._storage_path.exists():

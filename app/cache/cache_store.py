@@ -15,6 +15,8 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+from app.common.files import atomic_write_text
+
 
 class PriceCache:
     def __init__(self, storage_dir: Path, ttl_seconds: int) -> None:
@@ -26,7 +28,11 @@ class PriceCache:
         safe_key = "".join(c if c.isalnum() or c in "-_." else "_" for c in key)
         return self._storage_dir / f"{safe_key}.json"
 
-    def get(self, key: str, ignore_ttl: bool = False) -> Optional[Any]:
+    def get(
+        self, key: str, ignore_ttl: bool = False, max_age_seconds: Optional[float] = None
+    ) -> Optional[Any]:
+        """`max_age_seconds` overrides the cache's own TTL for this one read
+        (e.g. to accept an older entry for an item that is cheap anyway)."""
         path = self._path_for(key)
         if not path.exists():
             return None
@@ -36,7 +42,8 @@ class PriceCache:
             return None
 
         stored_at = payload.get("stored_at", 0)
-        if not ignore_ttl and (time.time() - stored_at) > self._ttl_seconds:
+        ttl = self._ttl_seconds if max_age_seconds is None else max_age_seconds
+        if not ignore_ttl and (time.time() - stored_at) > ttl:
             return None
         return payload.get("value")
 
@@ -47,7 +54,7 @@ class PriceCache:
     def set(self, key: str, value: Any) -> None:
         path = self._path_for(key)
         payload = {"stored_at": time.time(), "value": value}
-        path.write_text(json.dumps(payload), encoding="utf-8")
+        atomic_write_text(path, json.dumps(payload))
 
     def age_seconds(self, key: str) -> Optional[float]:
         path = self._path_for(key)

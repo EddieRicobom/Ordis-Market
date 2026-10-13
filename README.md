@@ -204,7 +204,7 @@ restart.
    Prime Sets** to narrow the results. Click any column header to sort,
    spreadsheet-style.
 5. Optional: **UPDATE ITEMS** force-refreshes the catalog, **UPDATE
-   MARKET** re-prices ignoring the cache, **UPDATE WIKI** resolves Wiki
+   MARKET** re-prices (most valuable items first), **UPDATE WIKI** resolves Wiki
    links for what's currently analyzed (works only after step 3, and can
    take a while the first time on a large inventory).
 6. Click **EXPORT** to save a CSV, JSON, or XLSX report.
