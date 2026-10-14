@@ -16,11 +16,11 @@ from pathlib import Path
 from typing import Optional
 
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "2.1.0"
 
 # Warframe.market rules require a descriptive, honest User-Agent.
 # See: https://docs.warframe.market/docs/rules/overview
-USER_AGENT = f"OrdisMarket/{APP_VERSION} (+https://github.com/ordis-market/ordis-market)"
+USER_AGENT = f"OrdisMarket/{APP_VERSION} (+https://github.com/EddieRicobom/Ordis-Market)"
 
 # Public v2 HTTP API base, per https://docs.warframe.market/docs/api/overview
 MARKET_API_BASE = "https://api.warframe.market/v2"
@@ -142,8 +142,9 @@ class AppSettings:
     offline_mode: bool = False
     request_timeout_seconds: float = 10.0
     auto_update_market_on_start: bool = True
-    """On launch, refresh market prices (like UPDATE MARKET) when an inventory is
-    loaded and the last analysis is older than auto_update_min_age_seconds."""
+    """On launch, refresh market prices when an inventory is loaded and the last
+    analysis is older than auto_update_min_age_seconds. Unlike UPDATE MARKET it
+    does not force a refetch: prices still fresh in the cache are reused."""
     auto_update_min_age_seconds: int = 60 * 10
     home_animations: bool = True
     """Holographic effects on the Home (glitch, scanlines, light sweeps, typing). Turn off to reduce motion."""

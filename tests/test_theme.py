@@ -2,7 +2,7 @@ import re
 import unittest
 from unittest.mock import MagicMock
 
-from app.ui.theme import STYLESHEET, apply_theme
+from app.ui.theme import GLYPH_STYLESHEET, STYLESHEET, apply_theme, build_stylesheet
 
 # Qt Style Sheets support a CSS2.1-like subset -- these commonly-used CSS3
 # properties are NOT supported and Qt will silently ignore (or warn about)
@@ -74,7 +74,19 @@ class TestApplyTheme(unittest.TestCase):
     def test_apply_theme_sets_stylesheet_on_target(self):
         fake_app = MagicMock()
         apply_theme(fake_app)
-        fake_app.setStyleSheet.assert_called_once_with(STYLESHEET)
+        fake_app.setStyleSheet.assert_called_once()
+        applied = fake_app.setStyleSheet.call_args.args[0]
+        self.assertTrue(applied.startswith(STYLESHEET))  # the glyph rules, if any, come after
+
+    def test_glyph_rules_are_added_only_when_every_glyph_exists(self):
+        glyphs = {k: f"/tmp/{k}.png" for k in ("check", "arrow_down", "arrow_up", "arrow_down_hover", "arrow_up_hover")}
+        full = build_stylesheet(glyphs)
+        self.assertIn("/tmp/check.png", full)
+        self.assertEqual(full.count("{"), full.count("}"))
+        self.assertEqual(build_stylesheet({}), STYLESHEET)
+        self.assertEqual(build_stylesheet({"check": "/tmp/check.png"}), STYLESHEET)
+        self.assertNotIn("url(", STYLESHEET)
+        self.assertIn("url(", GLYPH_STYLESHEET)
 
 
 if __name__ == "__main__":

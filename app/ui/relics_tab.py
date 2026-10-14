@@ -29,6 +29,8 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QProgressBar,
     QPushButton,
+    QSplitter,
+    QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -219,16 +221,52 @@ class RelicsTab(QWidget):
         header.setSortIndicator(-1, Qt.AscendingOrder)
         self.table.setToolTip("Click a set to see every part and the exact drop odds below.")
         self.table.itemSelectionChanged.connect(self._on_selection_changed)
-        layout.addWidget(self.table, stretch=3)
 
         self.txt_detail = QTextEdit()
         self.txt_detail.setReadOnly(True)
-        self.txt_detail.setMinimumHeight(150)
+        self.txt_detail.setMinimumHeight(110)
+        self.txt_detail.setPlaceholderText("Select a set above to see every part and its drop odds.")
         self.txt_detail.setToolTip(
             "Breakdown of the selected set: each part, and which of your relics can drop it, "
             "with the chance per opening and the chance if you open all the copies you own."
         )
-        layout.addWidget(self.txt_detail, stretch=2)
+
+        # List above, details below, with a draggable divider between them.
+        splitter = QSplitter(Qt.Vertical)
+        splitter.setChildrenCollapsible(False)
+        splitter.addWidget(self.table)
+        splitter.addWidget(self.txt_detail)
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 2)
+        splitter.setSizes([420, 260])
+
+        # When the list is empty it gives way to an explanation of why.
+        self.view_stack = QStackedWidget()
+        self.view_stack.addWidget(splitter)
+        self.view_stack.addWidget(self._build_empty_state())
+        layout.addWidget(self.view_stack, stretch=1)
+
+    def _build_empty_state(self) -> QWidget:
+        panel = QWidget()
+        panel.setObjectName("EmptyState")
+        box = QVBoxLayout(panel)
+        box.setAlignment(Qt.AlignCenter)
+        box.setSpacing(10)
+        self.lbl_empty_title = QLabel("")
+        self.lbl_empty_title.setObjectName("EmptyTitle")
+        self.lbl_empty_title.setAlignment(Qt.AlignCenter)
+        self.lbl_empty_hint = QLabel("")
+        self.lbl_empty_hint.setObjectName("EmptyHint")
+        self.lbl_empty_hint.setAlignment(Qt.AlignCenter)
+        self.lbl_empty_hint.setWordWrap(True)
+        self.btn_widen = QPushButton("SHOW EVERY SET I HOLD A PART OF")
+        self.btn_widen.setProperty("role", "primary")
+        self.btn_widen.setToolTip("Switches the list to every Prime set you own at least one part of.")
+        self.btn_widen.clicked.connect(lambda: self.show_mode(FilterMode.OWNED))
+        box.addWidget(self.lbl_empty_title)
+        box.addWidget(self.lbl_empty_hint)
+        box.addWidget(self.btn_widen, alignment=Qt.AlignCenter)
+        return panel
 
     # -- data -----------------------------------------------------------------
 
@@ -345,7 +383,7 @@ class RelicsTab(QWidget):
             else []
         )
         self._rows = statuses
-        self.lbl_count.setText(f"{len(statuses)} sets")
+        self.lbl_count.setText(f"{len(statuses)} set{'' if len(statuses) == 1 else 's'}")
 
         selected_name = self._selected_set_name()
         # Sorting and the auto-sized columns are switched off while the cells are
@@ -367,6 +405,43 @@ class RelicsTab(QWidget):
 
         self._restore_selection(selected_name)
         self._on_selection_changed()
+        self._update_empty_state(len(statuses))
+
+    def _update_empty_state(self, shown: int) -> None:
+        """Swaps the list for a short explanation when there is nothing to list."""
+        if shown:
+            self.view_stack.setCurrentIndex(0)
+            return
+        mode = self._current_mode()
+        widen = False
+        if self._data is None or self._report is None:
+            title = "Nothing to list yet"
+            hint = "Once the relic data and an inventory are loaded, the Prime sets you can work on appear here."
+        elif self.txt_search.text().strip():
+            title = "No set matches this search"
+            hint = "Try a shorter name, or switch the list above to \"All Prime sets\"."
+        elif mode is FilterMode.COMPLETABLE:
+            title = "No set can be finished with your relics right now"
+            hint = (
+                "A set shows up here when every part you are missing drops from a relic you own. "
+                "Open more relics, or look at the sets you are partway through."
+            )
+            widen = True
+        elif mode is FilterMode.CLOSEST:
+            title = "No set is partly covered by your relics"
+            hint = "None of your relics drops a part you are missing."
+            widen = True
+        elif mode is FilterMode.COMPLETE:
+            title = "No complete Prime set yet"
+            hint = "Sets show here once you hold every part (or the built component)."
+            widen = True
+        else:
+            title = "Nothing in this list"
+            hint = "No Prime set matches."
+        self.lbl_empty_title.setText(title)
+        self.lbl_empty_hint.setText(hint)
+        self.btn_widen.setVisible(widen)
+        self.view_stack.setCurrentIndex(1)
 
     def _fill_table(self, statuses: list[SetStatus]) -> None:
         self.table.setRowCount(len(statuses))

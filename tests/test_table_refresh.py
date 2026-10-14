@@ -62,7 +62,7 @@ class TestTableRefresh(unittest.TestCase):
             # the columns are back to auto-sizing after the refill
             header = win.table.horizontalHeader()
             self.assertEqual(header.sectionResizeMode(1), QHeaderView.ResizeToContents)
-            self.assertEqual(header.sectionResizeMode(0), QHeaderView.Stretch)
+            self.assertGreaterEqual(header.sectionSize(0), win._ITEM_COLUMN_MIN)  # the Item column absorbs the free width
             self.assertTrue(win.table.isSortingEnabled())
             self.assertTrue(win.table.updatesEnabled())
         finally:

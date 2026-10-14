@@ -13,3 +13,6 @@ logs/*.log.*
 .venv/
 venv/
 data/relic_data.json
+
+# Window geometry / filters remembered between runs
+data/ui_state.json

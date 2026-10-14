@@ -25,6 +25,10 @@ whether a Prime set is worth more assembled or in pieces.
 * Compare selling Prime parts for Platinum vs. keeping them for Ducats.
 * Compare selling a Prime set assembled vs. selling its components.
 * Export everything to CSV, JSON, or XLSX.
+* See which Prime sets you can finish with the relics you already own
+  (**RELICS** tab).
+* Get a one-screen summary with Baro Ki'Teer / Prime Resurgence timers
+  (**HOME** tab).
 
 ## What this app does **not** do
 
@@ -137,8 +141,9 @@ it — there is no separate build/compile step with this path, because
 always running whatever code is currently in the folder. Dependencies
 are re-checked (and upgraded if the new version needs a newer minimum)
 on every launch automatically. You can confirm which version you're
-running from the app's title bar or the subtitle under the header — both
-show the current version number.
+running from the app's title bar or the status bar at the bottom of the
+window — both show the current version number (it is defined once, as
+`APP_VERSION` in `app/config/settings.py`).
 
 If you'd rather manage the environment yourself instead of letting
 `run.py` do it:
@@ -175,9 +180,17 @@ through the whole pipeline again:
 * **Re-importing a new/changed inventory clears the old analysis**
   automatically, since showing stale numbers for a different inventory
   would be actively misleading, not just outdated.
-* A second status row shows what's already loaded — catalog item count,
-  known item names, known Wiki links — so you can tell at a glance
+* A footer row under the table shows what's already loaded — catalog item
+  count, known item names, known Wiki links — so you can tell at a glance
   whether UPDATE ITEMS/UPDATE WIKI would actually do anything new.
+* **The window remembers its size, position, filters and sort order**
+  (`data/ui_state.json`). The app always opens on the HOME tab. Delete the
+  file to reset the layout.
+* **Prices refresh on launch.** With an inventory loaded, the app re-prices it
+  in the background unless the last analysis is under 10 minutes old or
+  offline mode is on. This does not force anything: prices still fresh in
+  the cache are reused, so reopening right after a session is near-instant.
+  Disable it with `auto_update_market_on_start` (see **Settings**).
 * Buttons that can't do anything useful yet are disabled with a tooltip
   explaining what to do first (e.g. EXPORT is disabled until you've
   analyzed something). No more clicking a button just to get an error
@@ -188,6 +201,37 @@ All of this is separate from the various TTL-based network caches
 network calls aren't repeated; this caches the *computed analysis
 output* so the whole pipeline doesn't need re-running at all on a normal
 restart.
+
+## The three tabs
+
+* **HOME** — a one-screen summary: the estimated value of your last
+  analysis, items worth selling, Prime sets you can complete, plus live
+  Baro Ki'Teer and Prime Resurgence timers. It reads what was already
+  computed; it never fetches anything by itself. Click a card or a line
+  under "needs attention" to jump to the matching view. Holographic effects
+  can be turned off with `home_animations`.
+* **MARKET** — the inventory table, filters and every action button
+  (described below).
+* **RELICS** — which Prime sets can be completed by opening relics you own,
+  and which relics to open first. The drop tables come from the public WFCD
+  `warframe-items` dataset, downloaded once (about 10 MB) and cached in
+  `data/relic_data.json`.
+
+Keyboard shortcuts (also shown in each button's tooltip):
+
+| Keys | Action |
+|---|---|
+| `Ctrl+1` / `Ctrl+2` / `Ctrl+3` | HOME / MARKET / RELICS |
+| `Ctrl+O` | Import inventory |
+| `Ctrl+R` | Analyze inventory |
+| `F5` | Update market prices |
+| `Ctrl+E` | Export |
+| `Ctrl+F` | Focus the search box |
+
+The table colours what matters (SELL in bold cyan, CONSIDER in gold, KEEP
+and low liquidity muted), right-aligns numbers with thousands separators,
+and shows a helpful empty state — with a one-click "clear filters" — when
+nothing matches.
 
 ## Usage
 
@@ -215,6 +259,11 @@ Ordis Market talks to warframe.market's public v2 HTTP API
 (`https://api.warframe.market/v2`), read-only, unauthenticated, respecting
 the published 3 requests/second rate limit with retry/backoff on HTTP 429.
 See [RESEARCH.md](RESEARCH.md) for full details and sources.
+
+Prices are fetched most-valuable-first. The cheapest tail of the inventory
+(the last 5% of its value) reuses prices fetched within the last 12 hours,
+which roughly halves a full refresh without affecting the numbers that
+matter. A progress bar shows an estimated time remaining.
 
 ## Pricing
 
@@ -285,9 +334,29 @@ three still resolves via the fourth.
 ## Cache & Offline Mode
 
 Market order data is cached to `data/cache/` with a configurable TTL
-(default 30 minutes). If the market is unreachable, Ordis Market falls back
+(default 30 minutes; mod ranks are part of the cached orders). Cache and
+state files are written atomically, so a crash or a forced quit can't leave
+a half-written file behind. If the market is unreachable, Ordis Market falls back
 to the last cached prices and marks them as stale rather than failing
 outright.
+
+## Settings
+
+`data/settings.json` is read at startup (the UI doesn't write it; missing
+keys fall back to the defaults):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `platform` | `pc` | `pc`, `ps4`, `xbox` or `switch` |
+| `pricing_strategy` | `LOWEST` | `LOWEST`, `AVERAGE`, `MEDIAN` or `RECOMMENDED` — how **Price** is derived |
+| `ducat_reference_value` | `8.0` | Your personal Plat-per-Ducat reference |
+| `cache_ttl_seconds` | `1800` | Freshness of cached prices |
+| `catalog_ttl_seconds` / `name_index_ttl_seconds` | 24 h | Catalog / DE name index refresh |
+| `offline_mode` | `false` | Use cached prices only |
+| `request_timeout_seconds` | `10` | Per-request network timeout |
+| `auto_update_market_on_start` | `true` | Re-price on launch (see **Startup & State**) |
+| `auto_update_min_age_seconds` | `600` | Skip the launch update if the analysis is newer |
+| `home_animations` | `true` | Holographic effects on HOME |
 
 ## Limitations
 
@@ -303,7 +372,13 @@ outright.
 * No credentials of any kind are used, stored, or logged.
 * No process interaction with Warframe.exe, and no memory reading of any
   kind — this was evaluated and deliberately rejected; see below.
-* No network calls other than to `api.warframe.market`.
+* The only hosts it talks to are: `api.warframe.market` (prices),
+  `origin.warframe.com` / `content.warframe.com` (Digital Extremes' Public
+  Export, item names), `wiki.warframe.com` (Wiki links, on demand),
+  `raw.githubusercontent.com` (relic drop tables, on demand) and `pip`'s
+  package index when `run.py` installs dependencies. Everything is
+  read-only. Links to `warframe.market/items/…` are only opened by you, in
+  your browser.
 * All import is local file reading; no file is ever written back into your
   Warframe installation.
 * **LAUNCH WARFRAME** only opens a `steam://` URI — the OS/Steam handles
@@ -345,6 +420,12 @@ snapshot of whatever the code looked like at build time. If you're
 updating Ordis Market regularly, the recommended `run.bat` source path
 (see **Installation** above) avoids this entirely — replacing files and
 double-clicking `run.bat` is always enough there, with no rebuild step.
+
+**The icon.** `build.bat` embeds `assets/ordis_market.ico` into the `.exe`
+(`--icon`), and the running window draws the same emblem in code
+(`app/ui/app_icon.py`), so the title bar and taskbar match. It is an original
+emblem, not artwork from the game. To change it, edit `app/ui/app_icon.py`
+and regenerate the files with `python tools\make_icon.py`.
 
 **`OrdisMarket.exe` is fully self-contained.** You can copy just that one
 file anywhere — no `data/` folder, no other project files needed
@@ -391,7 +472,9 @@ export tools) and what was ruled in/out and why.
 python -m unittest discover -s tests -v
 ```
 
-59 tests, all mocked — no live network calls are made by the test suite.
+Roughly 400 tests, all mocked or offline — no live network calls are made by
+the test suite. The UI tests run headless (`QT_QPA_PLATFORM=offscreen`, set by
+the tests themselves).
 
 ---
 

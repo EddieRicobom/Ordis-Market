@@ -59,6 +59,7 @@ class TestStartupRefresh(_QtCase):
         win = self.make_window(updater=updater)
         self.assertLess(time.time() - started, 1.0)
         self.assertTrue(pump(lambda: win._startup_refresh_running()))
+        self.assertTrue(pump(lambda: updater.ensure_fresh.called))  # the thread has really started
         updater.ensure_fresh.assert_called_once_with(force=False)
         gate.set()
         self.assertTrue(pump(lambda: win.lbl_catalog_status.text() == "Catalog: 123 items known"))

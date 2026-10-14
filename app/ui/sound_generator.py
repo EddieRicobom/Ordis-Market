@@ -1,6 +1,5 @@
 """
 Ordis Market - Sound Effect Generator
-Version 2.0
 
 Generates synthetic sound effects using Python's wave module.
 Creates Ordis-themed notification sounds programmatically.

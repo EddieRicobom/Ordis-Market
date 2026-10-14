@@ -49,6 +49,19 @@ def load_settings() -> AppSettings:
     return AppSettings()
 
 
+def _set_windows_app_id() -> None:
+    """Gives the process its own identity on Windows, so the taskbar groups
+    the window under Ordis Market's icon rather than under python.exe's."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("OrdisMarket.Desktop")
+    except (AttributeError, OSError):
+        pass  # purely cosmetic
+
+
 def main() -> int:
     logger = configure_logging()
     if FELL_BACK_TO_USER_DIR:
@@ -127,11 +140,14 @@ def main() -> int:
 
         from app.ui.main_window import MainWindow  # noqa: F811
 
+    _set_windows_app_id()
     app = QApplication(sys.argv)
 
+    from app.ui.app_icon import build_app_icon
     from app.ui.theme import apply_theme
 
     apply_theme(app)
+    app.setWindowIcon(build_app_icon())
 
     window = MainWindow(
         inventory_parser,
@@ -149,6 +165,7 @@ def main() -> int:
         auto_update_min_age_seconds=settings.auto_update_min_age_seconds,
         home_animations=settings.home_animations,
         refresh_catalog_on_start=True,
+        ui_state_path=DATA_DIR / "ui_state.json",
     )
     window.show()
     return app.exec()

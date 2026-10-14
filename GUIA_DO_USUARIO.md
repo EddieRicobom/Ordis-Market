@@ -45,7 +45,7 @@ todas as dependências estão instaladas e atualizadas, sem você precisar
 rodar nada manualmente.
 
 Se quiser confirmar que está na versão certa, olhe a barra de título da
-janela (ou o textinho pequeno embaixo de "ORDIS MARKET") — os dois
+janela (ou o "ORDIS MARKET v…" no canto inferior direito) — os dois
 mostram o número da versão atual.
 
 > Você pode notar que também tem um arquivo `build.bat` nessa pasta.
@@ -119,8 +119,9 @@ Você tem três jeitos, escolha um:
 | **IMPORT INVENTORY** | Você escolhe manualmente um arquivo `.json` do seu inventário. |
 | **WATCH FOLDER** | O Ordis Market fica de olho numa pasta e importa sozinho toda vez que aparecer um arquivo novo lá. |
 
-**LAUNCH WARFRAME** é só um atalho pra abrir o jogo pela Steam — não tem
-nada a ver com importar o inventário, é só conveniência.
+**LAUNCH WARFRAME** (canto inferior direito, na barra de status) é só um atalho
+pra abrir o jogo pela Steam — não tem nada a ver com importar o inventário, é só
+conveniência.
 
 > Se você já importou antes, não precisa fazer isso de novo. O app lembra
 > o último inventário e a última análise, mesmo depois de fechar e abrir
@@ -156,11 +157,16 @@ Clique de novo pra inverter a ordem.
 
 ### 5. Use os filtros se a lista estiver grande
 
-- **Search**: digite parte do nome do item.
+- **Search**: digite parte do nome do item (`Ctrl+F` leva o cursor até lá; o ✕
+  dentro da caixa limpa o texto).
 - **All Items / Tradable Only / Prime Only**: filtra por categoria.
 - **Min Score**: só mostra itens com nota acima de X.
 - **Hide Prime Sets**: esconde os sets completos montados (tipo "Mesa
   Prime Set"), se você só quer ver o preço das peças separadas.
+
+O contador à direita da linha de filtros ("12 of 480 items") mostra quantas
+linhas passam pelos filtros. Se nenhuma passar, a tabela avisa e oferece um botão
+**CLEAR FILTERS**.
 
 ### 6. Os botões extras (opcionais, use quando quiser)
 
@@ -213,16 +219,38 @@ Relíquias que não estão nos dados (muito novas, ou Requiem) são ignoradas.
 
 ## Como saber o que já está carregado
 
-Logo abaixo do título, tem duas linhas de status:
+Tem dois lugares pra olhar:
 
-- **Total Items / Tradable / Estimated Value / Last Import / Last Analysis**
-  — o resumo da sua análise atual.
-- **Catalog / Item Names / Wiki Links** — quantos itens, nomes e links da
-  Wiki o Ordis já conhece, sem precisar clicar em nada pra descobrir.
+- A faixa no topo da aba Market: **Total Items / Tradable / Estimated Value /
+  Last Import / Last Analysis** — o resumo da sua análise atual.
+- A linha pequena embaixo da tabela: **Catalog / Item Names / Wiki Links** —
+  quantos itens, nomes e links da Wiki o Ordis já conhece, sem precisar clicar
+  em nada pra descobrir.
 
 Se você reabrir o app e essas informações já estiverem preenchidas, é
 porque ele lembrou tudo sozinho — não precisa clicar em nada de novo, a
 não ser que você tenha mudado alguma coisa no seu inventário.
+
+---
+
+## Atalhos e pequenas facilidades
+
+| Teclas | O que faz |
+|---|---|
+| `Ctrl+1` / `Ctrl+2` / `Ctrl+3` | Vai para HOME / MARKET / RELICS |
+| `Ctrl+O` | Importar inventário |
+| `Ctrl+R` | Analisar inventário |
+| `F5` | Atualizar preços do mercado |
+| `Ctrl+E` | Exportar |
+| `Ctrl+F` | Ir para a caixa de busca |
+
+- Na tabela, linhas **SELL** ficam em ciano e negrito, **CONSIDER** em dourado, e
+  KEEP / liquidez baixa ficam apagados, pra os melhores candidatos aparecerem.
+- A janela lembra tamanho, posição, filtros e ordenação entre uma execução e
+  outra (o app continua abrindo sempre na HOME). Pra zerar, feche o app e apague
+  `data/ui_state.json`.
+- Janela estreita? Os botões passam pra uma segunda linha e a tabela rola pro lado
+  em vez de espremer os nomes.
 
 ---
 

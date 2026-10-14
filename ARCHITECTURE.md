@@ -40,7 +40,8 @@ PriceAnalyzer / LiquidityAnalyzer / SellScoreAnalyzer / DucatAnalyzer / SetAnaly
         v
 PortfolioReport (per-item ItemAnalysis rows)
         |
-        +--> ui/main_window.py (PySide6 dashboard: filters, sort, table)
+        +--> ui/main_window.py (PySide6 window: HOME / MARKET / RELICS tabs;
+        |        filters, sort, table, shortcuts, remembered window state)
         |
         +--> export/exporter.py (CSV / JSON / XLSX)
 ```
@@ -49,7 +50,7 @@ There is deliberately **no** path from "Warframe Process" into this diagram.
 The only external I/O this application performs is:
 
 1. reading a local file the Operator explicitly selects (inventory import),
-2. HTTP GET requests to `api.warframe.market` (read-only, unauthenticated) and, for the Relics tab, to `raw.githubusercontent.com` (public WFCD dataset, on demand),
+2. HTTP GET requests (read-only, unauthenticated) to `api.warframe.market` (prices), `origin.warframe.com` / `content.warframe.com` (Digital Extremes' Public Export), `wiki.warframe.com` (Wiki links, on demand) and, for the Relics tab, `raw.githubusercontent.com` (public WFCD dataset, on demand),
 3. reading/writing its own local cache and settings files under `data/`.
 
 ## Module responsibilities
@@ -89,11 +90,19 @@ The only external I/O this application performs is:
 | `integrations.launcher` | Opens `steam://run/230410` via the OS | No (delegates to OS/Steam) |
 | `integrations.inventory_helper` | Starts an Operator-selected external `.exe` as its own process | No (delegates to OS; the external program may do its own I/O) |
 | `inventory.watcher` | Polls a chosen folder for a new/updated import file | No |
-| `ui.main_window` | PySide6 dashboard | No (delegates to analyzer) |
+| `ui.main_window` | PySide6 main window: tab host, Market tab, workers, shortcuts | No (delegates to analyzer) |
+| `ui.home_tab` / `ui.home_widgets` | HOME tab and its holographic widgets | No |
+| `ui.relics_tab` | RELICS tab (table, detail pane, empty states) | No (delegates to `relics.*`) |
 | `ui.filters` | Pure filter/sort helper logic (PySide6-free, unit-testable) | No |
-| `ui.theme` | Warframe-inspired dark QSS stylesheet | No |
+| `ui.theme` | Warframe-inspired dark QSS stylesheet (`build_stylesheet`) | No |
+| `ui.theme_assets` | Writes the small check/arrow glyph PNGs the stylesheet points at | No |
+| `ui.app_icon` | Draws the original app emblem in code (window/taskbar icon) | No |
+| `ui.flow_layout` | Wrapping layout for the Market toolbar | No |
+| `ui.ui_state` | Atomic JSON store for window geometry, filters and sort (`data/ui_state.json`) | No |
 | `ui.loading_indicator` | Rotating spinner + cycling status text for long operations | No |
 | `ord_isms.messages` | All personality strings, isolated | No |
+| `common.files` | `atomic_write_text`: write-to-temp-then-replace for every JSON store | No |
+| `tools/make_icon.py` | Dev script: regenerates `assets/ordis_market.ico` / `.png` from `ui.app_icon` | No |
 
 All the pure-calculation modules (`pricing`, `liquidity`, `sell_score`,
 `ducats`, `sets`, `parser`) have zero network or UI dependencies, which is

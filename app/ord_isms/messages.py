@@ -539,7 +539,7 @@ def say_recommendation(recommendation) -> str:
 
 
 # ---------------------------------------------------------------------------
-# v2.0: EXPANDED PROCESSING & UI MESSAGES (5-second rotation support)
+# EXPANDED PROCESSING & UI MESSAGES (for the 5-second loading rotation)
 # ---------------------------------------------------------------------------
 
 PROCESSING_ANALYSIS: Final[List[str]] = [
@@ -662,25 +662,25 @@ EXPORT_SAVE_V2: Final[List[str]] = [
 
 
 def say_processing_v2() -> str:
-    """v2.0+: Return a random processing message for loading states."""
+    """Return a random processing message for loading states."""
     return random.choice(PROCESSING_ANALYSIS)
 
 
 def say_analysis_complete_v2() -> str:
-    """v2.0+: Return a random completion message."""
+    """Return a random completion message."""
     return random.choice(ANALYSIS_COMPLETE_V2)
 
 
 def say_error_retry_v2() -> str:
-    """v2.0+: Return a random error/retry message."""
+    """Return a random error/retry message."""
     return random.choice(ERROR_RETRY_V2)
 
 
 def say_inventory_scan_v2() -> str:
-    """v2.0+: Return a random inventory scan message."""
+    """Return a random inventory scan message."""
     return random.choice(INVENTORY_SCAN_V2)
 
 
 def say_export_save_v2() -> str:
-    """v2.0+: Return a random export/save message."""
+    """Return a random export/save message."""
     return random.choice(EXPORT_SAVE_V2)

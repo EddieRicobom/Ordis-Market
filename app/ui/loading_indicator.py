@@ -89,7 +89,6 @@ class OrokinSpinner(QWidget):
 class LoadingIndicator(QWidget):
     """Spinner + a status label that cycles through a message pool.
     
-    Now with sound effects support (v2.0+)!
 
     Usage::
 
@@ -98,7 +97,7 @@ class LoadingIndicator(QWidget):
         self.loading_indicator.stop()
     """
 
-    DEFAULT_INTERVAL_MS = 5000  # Updated to 5 seconds for v2.0
+    DEFAULT_INTERVAL_MS = 5000  # one line every 5 seconds
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)

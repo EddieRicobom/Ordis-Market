@@ -48,8 +48,8 @@ its dependencies are installed and up to date on its own, so you never
 need to run anything by hand.
 
 If you'd like to double-check you're on the right version, look at the
-title bar of the window (or the small subtitle right under "ORDIS
-MARKET") — both show the current version number.
+title bar of the window (or the small "ORDIS MARKET v…" label at the
+bottom right) — both show the current version number.
 
 > You may notice a `build.bat` file in this folder too. Ignore it unless
 > you specifically want a single standalone `.exe` that doesn't need
@@ -119,8 +119,9 @@ Pick one of these three:
 | **IMPORT INVENTORY** | You manually pick a `.json` file of your inventory. |
 | **WATCH FOLDER** | Ordis Market keeps an eye on a folder and imports automatically whenever a new file shows up there. |
 
-**LAUNCH WARFRAME** is just a shortcut to open the game through Steam —
-it has nothing to do with importing your inventory, it's pure convenience.
+**LAUNCH WARFRAME** (bottom right, in the status bar) is just a shortcut to
+open the game through Steam — it has nothing to do with importing your
+inventory, it's pure convenience.
 
 > If you've already imported before, you don't need to do it again. The
 > app remembers your last inventory and your last analysis, even after
@@ -156,11 +157,16 @@ reverse the order.
 
 ### 5. Use the filters if the list is huge
 
-- **Search**: type part of an item's name.
+- **Search**: type part of an item's name (press `Ctrl+F` to jump there; the
+  ✕ inside the box clears it).
 - **All Items / Tradable Only / Prime Only**: filter by category.
 - **Min Score**: only show items scoring above X.
 - **Hide Prime Sets**: hides fully-assembled sets (like "Mesa Prime Set"),
   if you only want to see individual component prices.
+
+The counter at the right of the filter row ("12 of 480 items") shows how many
+rows pass the filters. If none do, the table says so and offers a **CLEAR
+FILTERS** button.
 
 ### 6. The extra buttons (optional, use when needed)
 
@@ -213,17 +219,39 @@ simply ignored.
 
 ## How to tell what's already loaded
 
-Right under the title, there are two status rows:
+There are two places to look:
 
-- **Total Items / Tradable / Estimated Value / Last Import / Last
-  Analysis** — the summary of your current analysis.
-- **Catalog / Item Names / Wiki Links** — how many items, names, and
-  Wiki links Ordis already knows about, without needing to click
-  anything to find out.
+- The strip at the top of the Market tab: **Total Items / Tradable /
+  Estimated Value / Last Import / Last Analysis** — the summary of your
+  current analysis.
+- The small line under the table: **Catalog / Item Names / Wiki Links** —
+  how many items, names, and Wiki links Ordis already knows about, without
+  needing to click anything to find out.
 
 If you reopen the app and these are already filled in, that means it
 remembered everything on its own — no need to click anything again
 unless you actually changed your inventory.
+
+---
+
+## Shortcuts and little conveniences
+
+| Keys | What it does |
+|---|---|
+| `Ctrl+1` / `Ctrl+2` / `Ctrl+3` | Go to HOME / MARKET / RELICS |
+| `Ctrl+O` | Import inventory |
+| `Ctrl+R` | Analyze inventory |
+| `F5` | Update market prices |
+| `Ctrl+E` | Export |
+| `Ctrl+F` | Jump to the search box |
+
+- In the table, **SELL** rows are bold cyan, **CONSIDER** is gold, and KEEP /
+  low liquidity are dimmed, so the good candidates stand out.
+- The window remembers its size, position, filters and sorting between runs
+  (the app still always opens on HOME). To reset it, close the app and delete
+  `data/ui_state.json`.
+- Narrow window? The buttons wrap onto a second row and the table scrolls
+  sideways instead of squeezing the item names.
 
 ---
 

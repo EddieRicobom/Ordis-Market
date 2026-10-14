@@ -15,13 +15,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QColor, QDesktopServices
+from PySide6.QtCore import QByteArray, QEvent, Qt, QThread, QTimer, QUrl, Signal
+from PySide6.QtGui import QColor, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QComboBox,
     QFileDialog,
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -31,6 +32,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QSpinBox,
+    QStackedWidget,
     QStatusBar,
     QTabWidget,
     QTableWidget,
@@ -71,12 +73,14 @@ from app.market.ducats import DucatVerdict
 from app.ord_isms import messages as ordis
 from app.relics.store import RelicDataStore
 from app.relics.view import FilterMode
+from app.ui.flow_layout import FlowLayout
 from app.ui.home_tab import HomeTab
 from app.ui.loading_indicator import LoadingIndicator
 from app.ui.relics_tab import RelicsTab
 from app.ui.sound_manager import get_sound_manager
 from app.ui.filters import LIQUIDITY_SORT_RANK, RECOMMENDATION_SORT_RANK, is_prime_set_name
-from app.ui.theme import ACCENT_CYAN, DANGER
+from app.ui.theme import ACCENT_CYAN, ACCENT_GOLD, DANGER, TEXT_MUTED
+from app.ui.ui_state import UiStateStore
 
 logger = logging.getLogger("ordis_market.ui")
 
@@ -86,6 +90,23 @@ def _link_color() -> QColor:
     semantics that make sharing one QColor instance across cells risky,
     so this is cheap and safe to call per-cell."""
     return QColor(ACCENT_CYAN)
+
+
+# Colour cues for the table (see theme.py for the palette): what is worth
+# acting on is lit up, what is not recedes.
+_RECOMMENDATION_COLOURS = {
+    "SELL": ACCENT_CYAN,
+    "CONSIDER": ACCENT_GOLD,
+    "KEEP": TEXT_MUTED,
+    "UNKNOWN": TEXT_MUTED,
+}
+_LIQUIDITY_COLOURS = {
+    "VERY HIGH": ACCENT_CYAN,
+    "HIGH": ACCENT_CYAN,
+    "LOW": TEXT_MUTED,
+    "VERY LOW": TEXT_MUTED,
+    "N/A": TEXT_MUTED,
+}
 
 
 class _SortableTableWidgetItem(QTableWidgetItem):
@@ -102,6 +123,21 @@ class _SortableTableWidgetItem(QTableWidgetItem):
         if isinstance(other, _SortableTableWidgetItem):
             return self._sort_value < other._sort_value
         return super().__lt__(other)
+
+
+def _numeric_cell(
+    text: str, sort_value: float, muted: bool = False, bold: bool = False
+) -> "_SortableTableWidgetItem":
+    """A right-aligned number cell that sorts by its value, not its text."""
+    item = _SortableTableWidgetItem(text, sort_value)
+    item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+    if muted:
+        item.setForeground(QColor(TEXT_MUTED))
+    if bold:
+        font = item.font()
+        font.setBold(True)
+        item.setFont(font)
+    return item
 
 
 class _AnalysisCancelled(Exception):
@@ -233,6 +269,7 @@ class MainWindow(QMainWindow):
         auto_update_min_age_seconds: int = 600,
         home_animations: bool = True,
         refresh_catalog_on_start: bool = False,
+        ui_state_path: Optional[Path] = None,
     ) -> None:
         super().__init__()
         self._parser = inventory_parser
@@ -251,6 +288,7 @@ class MainWindow(QMainWindow):
         self._analyzed_at: Optional[datetime] = None
         self._analysis_is_auto = False
         self._refresh_catalog_on_start = refresh_catalog_on_start
+        self._ui_state = UiStateStore(ui_state_path) if ui_state_path is not None else None
         self._catalog_worker_is_startup = False
         # Without any catalog entries nothing can be priced, so ANALYZE has to
         # wait for the first (background) download; with a catalog on disk it
@@ -277,13 +315,17 @@ class MainWindow(QMainWindow):
         self._watch_timer.timeout.connect(self._on_watch_tick)
 
         self.setWindowTitle(f"ORDIS MARKET v{APP_VERSION}")
-        self.resize(1180, 720)
+        self.resize(1280, 760)
+        self.setMinimumSize(860, 520)
         self._build_ui()
         self.lbl_catalog_status.setText(f"Catalog: {self._initial_catalog_count} items known")
         self.lbl_names_status.setText(f"Item Names: {self._initial_name_index_count} known")
         self.lbl_wiki_status.setText(f"Wiki Links: {self._initial_wiki_count} known")
+        self._restore_ui_state()
         self._load_persisted_inventory()
         self._load_persisted_report()
+        if self._report is None:
+            self._update_table_summary(0)  # a fresh start explains itself instead of showing a blank table
         self._update_button_states()
         # Load the sound effects once the window is up, not on the first click.
         QTimer.singleShot(500, get_sound_manager().preload)
@@ -323,7 +365,59 @@ class MainWindow(QMainWindow):
                 worker.wait(2000)
         self._live_threads.clear()
 
+    # -- window state (size, filters, sort) --------------------------------
+
+    def _restore_ui_state(self) -> None:
+        """Puts the window back the way it was left. The tab is deliberately
+        not restored: the app always opens on HOME."""
+        if self._ui_state is None:
+            return
+        state = self._ui_state.load()
+        try:
+            geometry = state.get("geometry")
+            if isinstance(geometry, str):
+                self.restoreGeometry(QByteArray.fromBase64(geometry.encode("ascii")))
+            filters = state.get("filters") or {}
+            widgets = (self.txt_search, self.chk_tradable_only, self.spin_min_score, self.chk_hide_prime_sets)
+            for widget in widgets:
+                widget.blockSignals(True)
+            self.txt_search.setText(str(filters.get("search", "")))
+            self.chk_tradable_only.setCurrentIndex(
+                min(max(int(filters.get("type", 0)), 0), self.chk_tradable_only.count() - 1)
+            )
+            self.spin_min_score.setValue(int(filters.get("min_score", 0)))
+            self.chk_hide_prime_sets.setChecked(bool(filters.get("hide_prime_sets", False)))
+            for widget in widgets:
+                widget.blockSignals(False)
+            sort = state.get("sort")
+            if isinstance(sort, list) and len(sort) == 2:
+                column, order = int(sort[0]), int(sort[1])
+                if 0 <= column < self.table.columnCount():
+                    self.table.horizontalHeader().setSortIndicator(
+                        column, Qt.DescendingOrder if order else Qt.AscendingOrder
+                    )
+        except (TypeError, ValueError):
+            logger.warning("Ignoring an unreadable window state.")
+
+    def _save_ui_state(self) -> None:
+        if self._ui_state is None:
+            return
+        header = self.table.horizontalHeader()
+        self._ui_state.save(
+            {
+                "geometry": bytes(self.saveGeometry().toBase64()).decode("ascii"),
+                "filters": {
+                    "search": self.txt_search.text(),
+                    "type": self.chk_tradable_only.currentIndex(),
+                    "min_score": self.spin_min_score.value(),
+                    "hide_prime_sets": self.chk_hide_prime_sets.isChecked(),
+                },
+                "sort": [header.sortIndicatorSection(), 1 if header.sortIndicatorOrder() == Qt.DescendingOrder else 0],
+            }
+        )
+
     def closeEvent(self, event) -> None:  # noqa: N802 - Qt override naming
+        self._save_ui_state()
         self._watch_timer.stop()
         self._shutdown_workers()
         super().closeEvent(event)
@@ -333,17 +427,15 @@ class MainWindow(QMainWindow):
     def _build_ui(self) -> None:
         central = QWidget()
         layout = QVBoxLayout(central)
+        layout.setContentsMargins(10, 10, 10, 8)
+        layout.setSpacing(8)
 
-        header = QLabel("ORDIS MARKET")
-        header.setObjectName("AppTitle")
-        subtitle = QLabel(
-            f"Inventory analysis and questionable financial decisions. — v{APP_VERSION}"
-        )
-        subtitle.setObjectName("AppSubtitle")
-        layout.addWidget(header)
-        layout.addWidget(subtitle)
-
-        summary_row = QHBoxLayout()
+        # -- summary strip: the numbers that matter, at a glance ----------
+        strip = QFrame()
+        strip.setObjectName("StatStrip")
+        summary_row = QHBoxLayout(strip)
+        summary_row.setContentsMargins(4, 2, 4, 2)
+        summary_row.setSpacing(0)
         self.lbl_total_items = QLabel("Total Items: -")
         self.lbl_total_items.setToolTip("How many distinct entries were found in your last imported inventory file.")
         self.lbl_tradable = QLabel("Tradable: -")
@@ -362,25 +454,10 @@ class MainWindow(QMainWindow):
             self.lbl_last_analysis,
         ):
             lbl.setObjectName("SummaryLabel")
-            summary_row.addWidget(lbl)
-        layout.addLayout(summary_row)
+            summary_row.addWidget(lbl, 1)
+        layout.addWidget(strip)
 
-        # A second, quieter status row so the Operator can tell at a
-        # glance what's already loaded (catalog/names/wiki) without
-        # needing to click UPDATE ITEMS or UPDATE WIKI "just to check".
-        status_row = QHBoxLayout()
-        self.lbl_catalog_status = QLabel("Catalog: loading...")
-        self.lbl_catalog_status.setToolTip("How many items warframe.market's catalog currently knows about. Refreshed by UPDATE ITEMS.")
-        self.lbl_names_status = QLabel("Item Names: loading...")
-        self.lbl_names_status.setToolTip("How many item display names are known from Digital Extremes' own Public Export data. Refreshed by UPDATE ITEMS.")
-        self.lbl_wiki_status = QLabel("Wiki Links: 0 known")
-        self.lbl_wiki_status.setToolTip("How many item names already have a resolved Warframe Wiki link cached. Refreshed by UPDATE WIKI.")
-        for lbl in (self.lbl_catalog_status, self.lbl_names_status, self.lbl_wiki_status):
-            lbl.setObjectName("SummaryLabel")
-            status_row.addWidget(lbl)
-        layout.addLayout(status_row)
-
-        button_row = QHBoxLayout()
+        # -- toolbar: inventory | market | maintenance ----------------------
         self.btn_launch_warframe = QPushButton("LAUNCH WARFRAME")
         self.btn_launch_warframe.setToolTip(
             "Opens Warframe through Steam, the same as clicking Play in your library. "
@@ -415,19 +492,28 @@ class MainWindow(QMainWindow):
             "slows it down."
         )
         self.btn_export = QPushButton("EXPORT")
-        for btn in (
-            self.btn_launch_warframe,
-            self.btn_grab_inventory,
-            self.btn_import,
-            self.btn_watch_folder,
-            self.btn_analyze,
-            self.btn_update_market,
-            self.btn_update_items,
-            self.btn_update_wiki,
-            self.btn_export,
-        ):
-            button_row.addWidget(btn)
-        layout.addLayout(button_row)
+        # The two actions you reach for most stand out; the rest stay quiet.
+        for btn in (self.btn_analyze, self.btn_update_market):
+            btn.setProperty("role", "primary")
+        self.btn_launch_warframe.setProperty("role", "ghost")
+
+        def group(*buttons: QPushButton) -> QWidget:
+            """Buttons that belong together; the toolbar wraps group by group."""
+            holder = QWidget()
+            row = QHBoxLayout(holder)
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(6)
+            for button in buttons:
+                row.addWidget(button)
+            return holder
+
+        # Inventory | market | maintenance. On a narrow window whole groups
+        # wrap onto a second row instead of stretching the window.
+        toolbar = FlowLayout(h_spacing=18, v_spacing=6)
+        toolbar.addWidget(group(self.btn_grab_inventory, self.btn_import, self.btn_watch_folder))
+        toolbar.addWidget(group(self.btn_analyze, self.btn_update_market))
+        toolbar.addWidget(group(self.btn_update_items, self.btn_update_wiki, self.btn_export))
+        layout.addLayout(toolbar)
 
         self.btn_launch_warframe.clicked.connect(self._on_launch_warframe_clicked)
         self.btn_grab_inventory.clicked.connect(self._on_grab_inventory_clicked)
@@ -439,9 +525,12 @@ class MainWindow(QMainWindow):
         self.btn_update_wiki.clicked.connect(self._on_update_wiki_clicked)
         self.btn_export.clicked.connect(self._on_export_clicked)
 
+        # -- filters ---------------------------------------------------------
         filter_row = QHBoxLayout()
+        filter_row.setSpacing(8)
         self.txt_search = QLineEdit()
-        self.txt_search.setPlaceholderText("Search item name...")
+        self.txt_search.setPlaceholderText("Search item name...   (Ctrl+F)")
+        self.txt_search.setClearButtonEnabled(True)
         self.txt_search.setToolTip("Filters the table to items whose name contains this text (not case-sensitive).")
         self.chk_tradable_only = QComboBox()
         self.chk_tradable_only.addItems(["All Items", "Tradable Only", "Prime Only"])
@@ -459,18 +548,19 @@ class MainWindow(QMainWindow):
             "Hides fully-assembled 'X Prime Set' entries, if you only want "
             "to compare individual component prices."
         )
-        for widget in (
-            self.txt_search,
-            self.chk_tradable_only,
-            self.spin_min_score,
-            self.chk_hide_prime_sets,
-        ):
+        self.lbl_row_count = QLabel("")
+        self.lbl_row_count.setObjectName("CountLabel")
+        self.lbl_row_count.setToolTip("How many rows the table shows, out of everything in the analysis.")
+        filter_row.addWidget(self.txt_search, 1)
+        for widget in (self.chk_tradable_only, self.spin_min_score, self.chk_hide_prime_sets, self.lbl_row_count):
             filter_row.addWidget(widget)
         layout.addLayout(filter_row)
 
         self.txt_search.textChanged.connect(self._on_search_text_changed)
         self.chk_tradable_only.currentIndexChanged.connect(self._refresh_table)
-        self.spin_min_score.valueChanged.connect(self._refresh_table)
+        # Debounced like the search box: holding the arrow key would otherwise
+        # rebuild the whole table on every single step.
+        self.spin_min_score.valueChanged.connect(self._on_search_text_changed)
         self.chk_hide_prime_sets.stateChanged.connect(self._refresh_table)
 
         # Debounce the search box: rebuilding a table with thousands of
@@ -516,11 +606,15 @@ class MainWindow(QMainWindow):
             if header_item is not None:
                 header_item.setToolTip(tip)
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        # The Item column takes whatever width the others leave (see
+        # _fit_item_column) but never less than _ITEM_COLUMN_MIN, so on a narrow
+        # window the table scrolls sideways instead of squeezing names to "Z...".
+        header.setSectionResizeMode(0, QHeaderView.Interactive)
         for col in range(1, self.table.columnCount()):
             # ResizeToContents so headers like "Recommendation" always get
             # enough width to display fully instead of being clipped.
             header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
+        self.table.viewport().installEventFilter(self)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setAlternatingRowColors(True)
@@ -528,7 +622,27 @@ class MainWindow(QMainWindow):
         self.table.setSortingEnabled(True)  # click a column header to sort, like a spreadsheet
         self.table.setToolTip("Click any column header to sort. Click again to reverse the order.")
         self.table.cellClicked.connect(self._on_table_cell_clicked)
-        layout.addWidget(self.table)
+
+        # The table shares its spot with a friendly explanation for when there
+        # is nothing to list (no analysis yet / the filters hide everything).
+        self.table_stack = QStackedWidget()
+        self.table_stack.addWidget(self.table)
+        self.table_stack.addWidget(self._build_empty_state())
+        layout.addWidget(self.table_stack, 1)
+
+        # Quiet footer: what data the app is working from.
+        footer_row = QHBoxLayout()
+        self.lbl_catalog_status = QLabel("Catalog: loading...")
+        self.lbl_catalog_status.setToolTip("How many items warframe.market's catalog currently knows about. Refreshed by UPDATE ITEMS.")
+        self.lbl_names_status = QLabel("Item Names: loading...")
+        self.lbl_names_status.setToolTip("How many item display names are known from Digital Extremes' own Public Export data. Refreshed by UPDATE ITEMS.")
+        self.lbl_wiki_status = QLabel("Wiki Links: 0 known")
+        self.lbl_wiki_status.setToolTip("How many item names already have a resolved Warframe Wiki link cached. Refreshed by UPDATE WIKI.")
+        for lbl in (self.lbl_catalog_status, self.lbl_names_status, self.lbl_wiki_status):
+            lbl.setObjectName("FooterLabel")
+            footer_row.addWidget(lbl)
+        footer_row.addStretch(1)
+        layout.addLayout(footer_row)
 
         if self._relic_store is None:
             self.setCentralWidget(central)
@@ -562,6 +676,79 @@ class MainWindow(QMainWindow):
             self.setCentralWidget(self.tabs)
         self.setStatusBar(QStatusBar())
         self.statusBar().showMessage(ordis.say(ordis.STARTUP))
+        version_label = QLabel(f"ORDIS MARKET v{APP_VERSION}")
+        version_label.setToolTip("The version of Ordis Market you are running.")
+        # Right end of the status bar: a convenience shortcut, kept out of the
+        # toolbar so that stays about the inventory and the prices.
+        self.statusBar().addPermanentWidget(self.btn_launch_warframe)
+        self.statusBar().addPermanentWidget(version_label)
+        self._install_shortcuts()
+
+    def _build_empty_state(self) -> QWidget:
+        panel = QWidget()
+        panel.setObjectName("EmptyState")
+        box = QVBoxLayout(panel)
+        box.setAlignment(Qt.AlignCenter)
+        box.setSpacing(10)
+        self.lbl_empty_title = QLabel("")
+        self.lbl_empty_title.setObjectName("EmptyTitle")
+        self.lbl_empty_title.setAlignment(Qt.AlignCenter)
+        self.lbl_empty_hint = QLabel("")
+        self.lbl_empty_hint.setObjectName("EmptyHint")
+        self.lbl_empty_hint.setAlignment(Qt.AlignCenter)
+        self.lbl_empty_hint.setWordWrap(True)
+        self.btn_clear_filters = QPushButton("CLEAR FILTERS")
+        self.btn_clear_filters.setProperty("role", "primary")
+        self.btn_clear_filters.setToolTip("Resets the search, the type filter, Min Score and Hide Prime Sets.")
+        self.btn_clear_filters.clicked.connect(self._reset_market_filters)
+        box.addWidget(self.lbl_empty_title)
+        box.addWidget(self.lbl_empty_hint)
+        box.addWidget(self.btn_clear_filters, alignment=Qt.AlignCenter)
+        return panel
+
+    # -- keyboard shortcuts --------------------------------------------------
+
+    _SHORTCUT_BUTTONS = (
+        ("btn_import", "Ctrl+O"),
+        ("btn_analyze", "Ctrl+R"),
+        ("btn_update_market", "F5"),
+        ("btn_export", "Ctrl+E"),
+    )
+
+    def _install_shortcuts(self) -> None:
+        """Ctrl+O import, Ctrl+R analyze, F5 update market, Ctrl+E export,
+        Ctrl+F search, Ctrl+1/2/3 switch tab. QAbstractButton.click() does
+        nothing on a disabled button, so a shortcut can never run an action
+        the buttons themselves currently forbid."""
+        self._shortcuts: list[QShortcut] = []
+
+        def bind(sequence: str, slot) -> None:
+            shortcut = QShortcut(QKeySequence(sequence), self)
+            shortcut.activated.connect(slot)
+            self._shortcuts.append(shortcut)
+
+        for attr, sequence in self._SHORTCUT_BUTTONS:
+            bind(sequence, getattr(self, attr).click)
+        bind("Ctrl+F", self._focus_search)
+        if getattr(self, "tabs", None) is not None:
+            for index in range(self.tabs.count()):
+                bind(f"Ctrl+{index + 1}", lambda i=index: self.tabs.setCurrentIndex(i))
+        self._append_shortcut_hints()
+
+    def _append_shortcut_hints(self) -> None:
+        """Adds 'Shortcut: X' to those buttons' tooltips (idempotent: the
+        tooltips are rewritten whenever the button states change)."""
+        for attr, sequence in self._SHORTCUT_BUTTONS:
+            button = getattr(self, attr)
+            tip = button.toolTip()
+            if sequence not in tip:
+                button.setToolTip(f"{tip}\nShortcut: {sequence}")
+
+    def _focus_search(self) -> None:
+        if getattr(self, "tabs", None) is not None:
+            self.tabs.setCurrentWidget(self._market_page)
+        self.txt_search.setFocus()
+        self.txt_search.selectAll()
 
     # -- relics tab ------------------------------------------------------
 
@@ -595,6 +782,7 @@ class MainWindow(QMainWindow):
         self.chk_hide_prime_sets.setChecked(False)
         for widget in widgets:
             widget.blockSignals(False)
+        self._search_debounce_timer.stop()  # a pending debounced refresh is now redundant
         self._refresh_table()
 
     def _on_home_navigate(self, target) -> None:
@@ -844,7 +1032,7 @@ class MainWindow(QMainWindow):
         self.progress_bar.setFormat(self._DEFAULT_PROGRESS_FORMAT)
         self._eta.reset()
 
-        # v2.0: Use expanded message pool with 5-second rotation
+        # Cycle through a wide pool of lines so the long wait does not repeat itself.
         message_pool = (
             ordis.ANALYSIS_START + ordis.PROCESSING_FLAVOR + ordis.PROCESSING_ANALYSIS
         )
@@ -1007,7 +1195,7 @@ class MainWindow(QMainWindow):
             return
 
         self.statusBar().showMessage(ordis.say(ordis.CATALOG_UPDATE_START))
-        # v2.0: Use expanded message pool with 5-second rotation
+        # Cycle through a wide pool of lines so the long wait does not repeat itself.
         message_pool = (
             ordis.CATALOG_UPDATE_START + ordis.PROCESSING_FLAVOR + ordis.PROCESSING_ANALYSIS
         )
@@ -1213,6 +1401,53 @@ class MainWindow(QMainWindow):
             for col in range(1, self.table.columnCount()):
                 header.setSectionResizeMode(col, QHeaderView.ResizeToContents)
             self.table.setUpdatesEnabled(True)
+        self._update_table_summary(len(items))
+        self._fit_item_column()
+
+    _ITEM_COLUMN_MIN = 240
+
+    def _fit_item_column(self) -> None:
+        header = self.table.horizontalHeader()
+        others = sum(header.sectionSize(col) for col in range(1, self.table.columnCount()))
+        header.resizeSection(
+            self._COL_ITEM, max(self._ITEM_COLUMN_MIN, self.table.viewport().width() - others)
+        )
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802 - Qt override
+        if watched is self.table.viewport() and event.type() == QEvent.Resize:
+            self._fit_item_column()
+        return super().eventFilter(watched, event)
+
+    def _update_table_summary(self, shown: int) -> None:
+        """The 'N of M items' counter, and -- when there is nothing to list --
+        a short explanation in place of an unexplained blank table."""
+        total = len(self._report.analyses) if self._report else 0
+        self.lbl_row_count.setText(f"{shown:,} of {total:,} items" if total else "")
+        if shown:
+            self.table_stack.setCurrentWidget(self.table)
+            return
+        snapshot = self._inventory_repo.snapshot
+        if total:
+            self.lbl_empty_title.setText("Nothing matches these filters")
+            self.lbl_empty_hint.setText(
+                f"The search or filters hide all {total:,} items of the analysis."
+            )
+            self.btn_clear_filters.setVisible(True)
+        elif snapshot is not None:
+            self.lbl_empty_title.setText("Ready to price your inventory")
+            self.lbl_empty_hint.setText(
+                f"{len(snapshot.items):,} items are loaded. Press ANALYZE INVENTORY "
+                "(Ctrl+R) to look up their prices on warframe.market."
+            )
+            self.btn_clear_filters.setVisible(False)
+        else:
+            self.lbl_empty_title.setText("No inventory yet")
+            self.lbl_empty_hint.setText(
+                "Use GRAB INVENTORY, IMPORT INVENTORY (Ctrl+O) or WATCH FOLDER to load "
+                "your inventory, then press ANALYZE INVENTORY."
+            )
+            self.btn_clear_filters.setVisible(False)
+        self.table_stack.setCurrentIndex(1)
 
     def _fill_table(self, items: list[ItemAnalysis]) -> None:
         self.table.setRowCount(len(items))
@@ -1226,41 +1461,57 @@ class MainWindow(QMainWindow):
                 item_cell.setForeground(QColor(DANGER))
                 item_cell.setToolTip(a.error)
             self.table.setItem(row, self._COL_ITEM, item_cell)
+            # Numbers line up on the right, like in a spreadsheet.
             self.table.setItem(
-                row, self._COL_QTY, _SortableTableWidgetItem(str(a.quantity), a.quantity)
+                row,
+                self._COL_QTY,
+                _numeric_cell(f"{a.quantity:,}", a.quantity),
             )
             self.table.setItem(
                 row,
                 self._COL_PRICE,
-                _SortableTableWidgetItem(
-                    f"{a.unit_price:.0f}p" if a.unit_price is not None else "N/A",
+                _numeric_cell(
+                    f"{a.unit_price:,.0f}p" if a.unit_price is not None else "N/A",
                     a.unit_price if a.unit_price is not None else -1,
+                    muted=a.unit_price is None,
                 ),
             )
             self.table.setItem(
                 row,
                 self._COL_TOTAL,
-                _SortableTableWidgetItem(
-                    f"{a.total_value:.0f}p" if a.total_value is not None else "N/A",
+                _numeric_cell(
+                    f"{a.total_value:,.0f}p" if a.total_value is not None else "N/A",
                     a.total_value if a.total_value is not None else -1,
+                    muted=a.total_value is None,
+                    bold=a.total_value is not None,
                 ),
             )
 
             liquidity_item = _SortableTableWidgetItem(
                 a.liquidity_level.value, LIQUIDITY_SORT_RANK.get(a.liquidity_level.value, 0)
             )
+            liquidity_item.setTextAlignment(Qt.AlignCenter)
+            liquidity_colour = _LIQUIDITY_COLOURS.get(a.liquidity_level.value)
+            if liquidity_colour:
+                liquidity_item.setForeground(QColor(liquidity_colour))
             if a.data_available:
                 liquidity_item.setToolTip(ordis.say_liquidity(a.liquidity_level))
             self.table.setItem(row, self._COL_LIQUIDITY, liquidity_item)
 
-            self.table.setItem(
-                row, self._COL_SCORE, _SortableTableWidgetItem(str(a.score), a.score)
-            )
+            self.table.setItem(row, self._COL_SCORE, _numeric_cell(str(a.score), a.score))
 
             recommendation_item = _SortableTableWidgetItem(
                 a.recommendation.value,
                 RECOMMENDATION_SORT_RANK.get(a.recommendation.value, 0),
             )
+            recommendation_item.setTextAlignment(Qt.AlignCenter)
+            recommendation_colour = _RECOMMENDATION_COLOURS.get(a.recommendation.value)
+            if recommendation_colour:
+                recommendation_item.setForeground(QColor(recommendation_colour))
+            if a.recommendation.value == "SELL":
+                bold = recommendation_item.font()
+                bold.setBold(True)
+                recommendation_item.setFont(bold)
             if a.data_available:
                 recommendation_item.setToolTip(ordis.say_recommendation(a.recommendation))
             self.table.setItem(row, self._COL_RECOMMENDATION, recommendation_item)
@@ -1394,6 +1645,7 @@ class MainWindow(QMainWindow):
             if has_report
             else "Run ANALYZE INVENTORY first -- Wiki links are resolved for whatever's in the report."
         )
+        self._append_shortcut_hints()
 
     def _show_error(self, message: str) -> None:
         logger.warning(message)

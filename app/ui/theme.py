@@ -14,6 +14,10 @@ CSS3 (no box-shadow/transition/transform support), applied once at the
 QApplication level so it covers the main window plus any dialogs
 (QFileDialog, QMessageBox) consistently. Kept in its own module so the
 color palette can be tuned without touching widget/layout code.
+
+Widgets opt into a look through their object name (QLabel#SummaryLabel) or a
+"role" property (QPushButton[role="primary"] for the main actions,
+[role="ghost"] for the quiet ones).
 """
 
 from __future__ import annotations
@@ -68,9 +72,9 @@ QPushButton {{
     color: {TEXT_PRIMARY};
     border: 1px solid {BORDER};
     border-radius: 3px;
-    padding: 7px 14px;
+    padding: 6px 12px;
     font-weight: 600;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.3px;
 }}
 
 QPushButton:hover {{
@@ -180,11 +184,13 @@ QProgressBar {{
     border-radius: 3px;
     text-align: center;
     color: {TEXT_PRIMARY};
-    height: 16px;
+    font-weight: 600;
+    height: 18px;
 }}
 
 QProgressBar::chunk {{
-    background-color: {ACCENT_CYAN};
+    /* the dimmer cyan keeps the white percentage readable where it crosses the bar */
+    background-color: {ACCENT_CYAN_DIM};
     border-radius: 2px;
 }}
 
@@ -229,10 +235,259 @@ QToolTip {{
     border: 1px solid {ACCENT_CYAN_DIM};
     padding: 4px 6px;
 }}
+
+QPushButton:focus {{
+    border: 1px solid {ACCENT_CYAN_DIM};
+}}
+
+QPushButton[role="primary"] {{
+    background-color: rgba(79, 214, 201, 0.12);
+    border: 1px solid {ACCENT_CYAN_DIM};
+    color: {ACCENT_CYAN};
+}}
+
+QPushButton[role="primary"]:hover {{
+    background-color: rgba(79, 214, 201, 0.22);
+    border: 1px solid {ACCENT_CYAN};
+}}
+
+QPushButton[role="primary"]:pressed {{
+    background-color: {ACCENT_CYAN_DIM};
+    color: {BG_BASE};
+}}
+
+QPushButton[role="primary"]:disabled {{
+    background-color: {BG_BASE};
+    border: 1px solid {BORDER};
+    color: {TEXT_MUTED};
+}}
+
+QPushButton[role="ghost"] {{
+    background-color: transparent;
+    border: 1px solid transparent;
+    color: {TEXT_MUTED};
+}}
+
+QPushButton[role="ghost"]:hover {{
+    border: 1px solid {BORDER};
+    color: {ACCENT_CYAN};
+}}
+
+QFrame#StatStrip {{
+    background-color: {BG_PANEL};
+    border: 1px solid {BORDER};
+    border-radius: 4px;
+}}
+
+QFrame#StatStrip QLabel#SummaryLabel {{
+    background-color: transparent;
+    padding: 6px 14px;
+}}
+
+QFrame#ToolbarSeparator {{
+    background-color: {BORDER};
+    min-width: 1px;
+    max-width: 1px;
+}}
+
+QLabel#FooterLabel {{
+    color: {TEXT_MUTED};
+    font-size: 9pt;
+    padding: 0 6px;
+}}
+
+QLabel#CountLabel {{
+    color: {ACCENT_GOLD};
+    font-weight: 600;
+    padding: 0 6px;
+}}
+
+QLabel#EmptyTitle {{
+    color: {TEXT_PRIMARY};
+    font-size: 13pt;
+    font-weight: 600;
+}}
+
+QLabel#EmptyHint {{
+    color: {TEXT_MUTED};
+    font-size: 10pt;
+}}
+
+QWidget#EmptyState {{
+    background-color: {BG_PANEL};
+    border: 1px solid {BORDER};
+}}
+
+QWidget#EmptyState QLabel {{
+    background-color: transparent;
+}}
+
+QCheckBox {{
+    spacing: 8px;
+    background: transparent;
+}}
+
+QCheckBox::indicator {{
+    width: 16px;
+    height: 16px;
+    border: 1px solid {TEXT_MUTED};
+    border-radius: 3px;
+    background-color: {BG_PANEL};
+}}
+
+QCheckBox::indicator:hover {{
+    border: 1px solid {ACCENT_CYAN};
+}}
+
+QCheckBox::indicator:checked {{
+    background-color: {ACCENT_CYAN};
+    border: 1px solid {ACCENT_CYAN};
+}}
+
+QSpinBox {{
+    padding-right: 22px;
+}}
+
+QSpinBox::up-button, QSpinBox::down-button {{
+    subcontrol-origin: border;
+    width: 20px;
+    border-left: 1px solid {BORDER};
+    background-color: {BG_PANEL_ALT};
+}}
+
+QSpinBox::up-button {{
+    subcontrol-position: top right;
+    border-top-right-radius: 3px;
+}}
+
+QSpinBox::down-button {{
+    subcontrol-position: bottom right;
+    border-bottom-right-radius: 3px;
+}}
+
+QSpinBox::up-button:hover, QSpinBox::down-button:hover {{
+    background-color: {BORDER};
+}}
+
+QScrollBar:horizontal {{
+    background: {BG_BASE};
+    height: 12px;
+    margin: 0;
+}}
+
+QScrollBar::handle:horizontal {{
+    background: {BORDER};
+    border-radius: 4px;
+    min-width: 24px;
+}}
+
+QScrollBar::handle:horizontal:hover {{
+    background: {ACCENT_CYAN_DIM};
+}}
+
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+    width: 0px;
+}}
+
+QTableWidget::item:hover {{
+    background-color: {BG_PANEL_ALT};
+}}
+
+QTableWidget {{
+    outline: none;
+}}
+
+QHeaderView::section:hover {{
+    color: {ACCENT_CYAN};
+}}
+
+QTabBar::tab {{
+    min-width: 70px;
+}}
+
+QSplitter::handle {{
+    background-color: {BORDER};
+}}
+
+QSplitter::handle:vertical {{
+    height: 3px;
+}}
+
+QSplitter::handle:hover {{
+    background-color: {ACCENT_CYAN_DIM};
+}}
+
+QStatusBar QLabel {{
+    color: {TEXT_MUTED};
+    padding: 0 8px;
+}}
+
+QStatusBar QPushButton {{
+    padding: 2px 10px;
+    font-size: 8pt;
+}}
+
+QStatusBar::item {{
+    border: none;
+}}
 """
+
+
+# Rules that need the glyph images from theme_assets (check mark, arrows).
+# Kept apart from STYLESHEET so the base sheet stays pure text and the app
+# still looks right, with Qt's own glyphs, if the images cannot be written.
+GLYPH_STYLESHEET = """
+QCheckBox::indicator:checked {{
+    image: url("{check}");
+}}
+
+QComboBox::down-arrow {{
+    image: url("{arrow_down}");
+    width: 12px;
+    height: 12px;
+}}
+
+QComboBox::down-arrow:on, QComboBox::down-arrow:hover {{
+    image: url("{arrow_down_hover}");
+}}
+
+QSpinBox::up-arrow {{
+    image: url("{arrow_up}");
+    width: 10px;
+    height: 10px;
+}}
+
+QSpinBox::down-arrow {{
+    image: url("{arrow_down}");
+    width: 10px;
+    height: 10px;
+}}
+
+QSpinBox::up-arrow:hover {{
+    image: url("{arrow_up_hover}");
+}}
+
+QSpinBox::down-arrow:hover {{
+    image: url("{arrow_down_hover}");
+}}
+"""
+
+
+def build_stylesheet(glyphs: dict[str, str] | None = None) -> str:
+    """The base sheet, plus the glyph rules when the images are available."""
+    if not glyphs or not all(key in glyphs for key in _GLYPH_KEYS):
+        return STYLESHEET
+    return STYLESHEET + GLYPH_STYLESHEET.format(**glyphs)
+
+
+_GLYPH_KEYS = ("check", "arrow_down", "arrow_up", "arrow_down_hover", "arrow_up_hover")
 
 
 def apply_theme(app) -> None:
     """Applies the Warframe-inspired stylesheet to a QApplication (or any
     QWidget) instance. Safe to call once at startup."""
-    app.setStyleSheet(STYLESHEET)
+    from app.ui.theme_assets import ensure_ui_icons
+
+    app.setStyleSheet(build_stylesheet(ensure_ui_icons(
+        dark=BG_BASE, light=TEXT_MUTED, accent=ACCENT_CYAN
+    )))

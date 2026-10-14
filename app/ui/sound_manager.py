@@ -5,13 +5,12 @@ ui.sound_manager
 Plays Ordis' short UI sounds (activate / complete / error / click /
 notification).
 
-Design notes -- why this replaced the SoundManager that used to live in
-ui_enhanced.py:
+Design notes -- why it is built this way (an earlier SoundManager built a new
+QMediaPlayer per play() and kept only the latest one):
 
 * One QSoundEffect per sound, created once and kept alive. QSoundEffect is
-  Qt's API for short, low-latency effects. The old code built a new
-  QMediaPlayer for every play() call and kept only the latest one, so earlier
-  players were destroyed while still playing.
+  Qt's API for short, low-latency effects. Creating a player per play() call
+  would destroy earlier players while they are still playing.
 * QtMultimedia is imported lazily, on the first sound, never at module import.
   A machine whose audio stack is missing or broken can then only ever lose
   the sounds, not the whole application at start-up.

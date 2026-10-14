@@ -42,10 +42,15 @@ REM app/config/settings.py for why that's anchored to the .exe's real location,
 REM not a temp folder. The sound effects, however, ARE bundled (--add-data);
 REM app/ui/sound_manager.py finds them via sys._MEIPASS and, if they are ever
 REM missing, regenerates them into data\sounds on its own.
+REM The program icon: --icon puts assets\ordis_market.ico on the .exe itself
+REM (Explorer, taskbar, shortcuts). The window icon is drawn in code
+REM (app/ui/app_icon.py), so nothing else needs bundling. To change the
+REM artwork, edit app/ui/app_icon.py and run: python tools\make_icon.py
 python -m PyInstaller ^
     --name OrdisMarket ^
     --onefile ^
     --windowed ^
+    --icon "assets\ordis_market.ico" ^
     --add-data "sounds;sounds" ^
     app\main.py
 
